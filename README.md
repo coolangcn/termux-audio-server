@@ -146,7 +146,21 @@ chmod +x fix_api_binding.sh
 ~/start_audio_server
 ```
 
-### 4. API服务完全无法启动
+### 4. 日志文件路径错误（FileNotFoundError）
+
+如果出现日志文件路径错误，请运行日志路径修复脚本：
+
+```bash
+# 下载并运行日志路径修复脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_logging_path.sh
+chmod +x fix_logging_path.sh
+./fix_logging_path.sh
+
+# 重新测试API服务器
+~/test_api_server.py
+```
+
+### 5. API服务完全无法启动
 
 如果以上方法都无法解决问题，请使用综合诊断脚本：
 
@@ -160,14 +174,14 @@ chmod +x diagnose_and_fix_api.sh
 ~/start_api_manual.sh
 ```
 
-### 5. rclone同步失败
+### 6. rclone同步失败
 
 检查以下几点：
 1. 确保rclone配置正确：`rclone config`
 2. 测试远程存储连接：`rclone lsd synology:`
 3. 检查网络连接是否正常
 
-### 6. 音频播放问题
+### 7. 音频播放问题
 
 如果音频无法播放，请检查：
 1. MPV是否正确安装：`mpv --version`

@@ -551,14 +551,25 @@ def web_control_panel():
         // 控制API调用
         function callAPI(endpoint) {
             fetch(endpoint)
-                .then(response => response.json())
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
                 .then(data => {
                     console.log('API Response:', data);
-                    setTimeout(updateStatus, 500); // 稍后更新状态
-                    loadLogs(); // 更新日志
+                    if (data.status === 'error') {
+                        alert('操作失败: ' + data.message);
+                    } else {
+                        // 操作成功，更新状态和日志
+                        setTimeout(updateStatus, 500); // 稍后更新状态
+                        loadLogs(); // 更新日志
+                    }
                 })
                 .catch(error => {
                     console.error('API Error:', error);
+                    alert('API调用失败: ' + error.message);
                 });
         }
         
@@ -618,7 +629,8 @@ def web_control_panel():
                 .then(data => {
                     const logContent = document.getElementById('log-content');
                     if (data.logs && data.logs.length > 0) {
-                        logContent.innerHTML = data.logs.reverse().join('<br>');
+                        // 保持日志的正确顺序（最新的在底部）
+                        logContent.innerHTML = data.logs.join('<br>');
                     } else {
                         logContent.innerHTML = '暂无操作日志';
                     }

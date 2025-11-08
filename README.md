@@ -190,18 +190,18 @@ chmod +x fix_api_after_ui_update.sh
 ~/start_audio_server
 ```
 
-### 7. API服务完全无法启动
+### 7. 全面诊断和修复API服务问题
 
-如果以上方法都无法解决问题，请使用综合诊断脚本：
+如果以上方法都无法解决问题，请使用全面诊断脚本：
 
 ```bash
-# 下载并运行综合诊断脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/diagnose_and_fix_api.sh
-chmod +x diagnose_and_fix_api.sh
-./diagnose_and_fix_api.sh
+# 下载并运行全面诊断脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/comprehensive_diagnose.sh
+chmod +x comprehensive_diagnose.sh
+./comprehensive_diagnose.sh
 
-# 手动启动API服务进行测试
-~/start_api_manual.sh
+# 以调试模式启动API服务
+~/start_api_debug.sh
 ```
 
 ### 8. rclone同步失败

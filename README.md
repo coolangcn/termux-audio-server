@@ -146,14 +146,28 @@ chmod +x fix_api_binding.sh
 ~/start_audio_server
 ```
 
-### 4. rclone同步失败
+### 4. API服务完全无法启动
+
+如果以上方法都无法解决问题，请使用综合诊断脚本：
+
+```bash
+# 下载并运行综合诊断脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/diagnose_and_fix_api.sh
+chmod +x diagnose_and_fix_api.sh
+./diagnose_and_fix_api.sh
+
+# 手动启动API服务进行测试
+~/start_api_manual.sh
+```
+
+### 5. rclone同步失败
 
 检查以下几点：
 1. 确保rclone配置正确：`rclone config`
 2. 测试远程存储连接：`rclone lsd synology:`
 3. 检查网络连接是否正常
 
-### 5. 音频播放问题
+### 6. 音频播放问题
 
 如果音频无法播放，请检查：
 1. MPV是否正确安装：`mpv --version`

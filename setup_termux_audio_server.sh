@@ -67,6 +67,7 @@ ln -sf ~/termux-audio-server/restart_with_logging.sh ~/restart_with_logging
 ln -sf ~/termux-audio-server/fix_web_ui_issues.sh ~/fix_web_ui_issues
 ln -sf ~/termux-audio-server/simple_fix_ui.sh ~/simple_fix_ui
 ln -sf ~/termux-audio-server/direct_fix_ui.py ~/direct_fix_ui
+ln -sf ~/termux-audio-server/test_and_fix_logging.py ~/test_and_fix_logging
 
 # 配置rclone
 echo ""
@@ -155,6 +156,7 @@ echo "  - 带日志功能的重启脚本: ~/restart_with_logging"
 echo "  - 网页UI问题修复脚本: ~/fix_web_ui_issues"
 echo "  - 简单UI修复脚本: ~/simple_fix_ui"
 echo "  - 直接UI修复脚本: ~/direct_fix_ui"
+echo "  - 测试和修复日志脚本: ~/test_and_fix_logging"
 echo "  - 部署目录: ~/termux-audio-server/"
 echo ""
 echo "📌 下一步操作:"
@@ -180,6 +182,7 @@ echo "- 带日志功能的重启: ~/restart_with_logging"
 echo "- 修复网页UI问题: ~/fix_web_ui_issues"
 echo "- 简单UI修复: ~/simple_fix_ui"
 echo "- 直接UI修复: ~/direct_fix_ui"
+echo "- 测试和修复日志: ~/test_and_fix_logging"
 echo "- 查看日志: cat ~/api_server_debug.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"

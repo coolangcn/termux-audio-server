@@ -6,6 +6,11 @@ import time
 import logging
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
+import logging.config
+
+# 禁用Flask的默认日志记录
+log = logging.getLogger('werkzeug')
+log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -24,22 +29,27 @@ auto_cache_running = False
 LOG_DIR = "/data/data/com.termux/files/home/audio_logs"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.FileHandler(f"{LOG_DIR}/operations.log"),
-        logging.StreamHandler()
-    ]
-)
+# 创建专门的操作日志记录器
+operation_logger = logging.getLogger('operations')
+operation_logger.setLevel(logging.INFO)
 
-logger = logging.getLogger(__name__)
+# 创建文件处理器
+file_handler = logging.FileHandler(f"{LOG_DIR}/operations.log")
+file_handler.setLevel(logging.INFO)
+
+# 创建日志格式
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+file_handler.setFormatter(formatter)
+
+# 添加处理器到记录器
+operation_logger.addHandler(file_handler)
+operation_logger.propagate = False  # 防止日志传播到父记录器
 
 # 添加操作日志装饰器
 def log_operation(operation):
     def decorator(f):
         def wrapper(*args, **kwargs):
-            logger.info(f"用户执行操作: {operation}")
+            operation_logger.info(f"用户执行操作: {operation}")
             return f(*args, **kwargs)
         wrapper.__name__ = f.__name__
         return wrapper

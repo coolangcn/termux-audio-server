@@ -55,6 +55,13 @@ ln -sf ~/termux-audio-server/start_remote_audio.sh ~/start_audio_server
 ln -sf ~/termux-audio-server/stop_audio_server.sh ~/stop_audio_server
 ln -sf ~/termux-audio-server/fix_mpv_socket.sh ~/fix_mpv_socket
 ln -sf ~/termux-audio-server/fix_network_config.sh ~/fix_network_config
+ln -sf ~/termux-audio-server/fix_api_binding.sh ~/fix_api_binding
+ln -sf ~/termux-audio-server/diagnose_and_fix_api.sh ~/diagnose_api
+ln -sf ~/termux-audio-server/fix_logging_path.sh ~/fix_logging
+ln -sf ~/termux-audio-server/update_web_ui.sh ~/update_web_ui
+ln -sf ~/termux-audio-server/fix_api_after_ui_update.sh ~/fix_api_ui
+ln -sf ~/termux-audio-server/comprehensive_diagnose.sh ~/comprehensive_diagnose
+ln -sf ~/termux-audio-server/fix_api_binding_issue.sh ~/fix_api_binding_issue
 
 # 配置rclone
 echo ""
@@ -131,6 +138,13 @@ echo "  - 启动脚本: ~/start_audio_server"
 echo "  - 停止脚本: ~/stop_audio_server"
 echo "  - MPV Socket修复脚本: ~/fix_mpv_socket"
 echo "  - 网络配置修复脚本: ~/fix_network_config"
+echo "  - API绑定修复脚本: ~/fix_api_binding"
+echo "  - API诊断脚本: ~/diagnose_api"
+echo "  - 日志路径修复脚本: ~/fix_logging"
+echo "  - UI更新脚本: ~/update_web_ui"
+echo "  - UI更新后API修复脚本: ~/fix_api_ui"
+echo "  - 全面诊断脚本: ~/comprehensive_diagnose"
+echo "  - API绑定问题修复脚本: ~/fix_api_binding_issue"
 echo "  - 部署目录: ~/termux-audio-server/"
 echo ""
 echo "📌 下一步操作:"
@@ -144,7 +158,14 @@ echo "- 启动服务器: ~/start_audio_server"
 echo "- 停止服务器: ~/stop_audio_server"
 echo "- 修复MPV Socket问题: ~/fix_mpv_socket"
 echo "- 修复网络配置问题: ~/fix_network_config"
-echo "- 查看日志: cat ~/audio_server.log"
+echo "- 修复API绑定问题: ~/fix_api_binding"
+echo "- 诊断API问题: ~/diagnose_api"
+echo "- 修复日志路径问题: ~/fix_logging"
+echo "- 更新网页UI: ~/update_web_ui"
+echo "- 修复UI更新后的API问题: ~/fix_api_ui"
+echo "- 全面诊断: ~/comprehensive_diagnose"
+echo "- 修复API绑定问题: ~/fix_api_binding_issue"
+echo "- 查看日志: cat ~/api_server_debug.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"
 echo ""

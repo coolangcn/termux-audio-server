@@ -62,6 +62,8 @@ ln -sf ~/termux-audio-server/update_web_ui.sh ~/update_web_ui
 ln -sf ~/termux-audio-server/fix_api_after_ui_update.sh ~/fix_api_ui
 ln -sf ~/termux-audio-server/comprehensive_diagnose.sh ~/comprehensive_diagnose
 ln -sf ~/termux-audio-server/fix_api_binding_issue.sh ~/fix_api_binding_issue
+ln -sf ~/termux-audio-server/add_operation_log.sh ~/add_operation_log
+ln -sf ~/termux-audio-server/restart_with_logging.sh ~/restart_with_logging
 
 # 配置rclone
 echo ""
@@ -145,6 +147,8 @@ echo "  - UI更新脚本: ~/update_web_ui"
 echo "  - UI更新后API修复脚本: ~/fix_api_ui"
 echo "  - 全面诊断脚本: ~/comprehensive_diagnose"
 echo "  - API绑定问题修复脚本: ~/fix_api_binding_issue"
+echo "  - 操作日志添加脚本: ~/add_operation_log"
+echo "  - 带日志功能的重启脚本: ~/restart_with_logging"
 echo "  - 部署目录: ~/termux-audio-server/"
 echo ""
 echo "📌 下一步操作:"
@@ -165,6 +169,8 @@ echo "- 更新网页UI: ~/update_web_ui"
 echo "- 修复UI更新后的API问题: ~/fix_api_ui"
 echo "- 全面诊断: ~/comprehensive_diagnose"
 echo "- 修复API绑定问题: ~/fix_api_binding_issue"
+echo "- 添加操作日志: ~/add_operation_log"
+echo "- 带日志功能的重启: ~/restart_with_logging"
 echo "- 查看日志: cat ~/api_server_debug.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"

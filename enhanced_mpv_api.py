@@ -3,6 +3,7 @@ import json
 import random
 import threading
 import time
+import logging
 from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 
@@ -18,6 +19,31 @@ LOCAL_DIR = "/data/data/com.termux/files/home/nas_audio_cache"
 # 自动缓存线程控制
 auto_cache_thread = None
 auto_cache_running = False
+
+# 配置操作日志
+LOG_DIR = "/data/data/com.termux/files/home/audio_logs"
+os.makedirs(LOG_DIR, exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.FileHandler(f"{LOG_DIR}/operations.log"),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+# 添加操作日志装饰器
+def log_operation(operation):
+    def decorator(f):
+        def wrapper(*args, **kwargs):
+            logger.info(f"用户执行操作: {operation}")
+            return f(*args, **kwargs)
+        wrapper.__name__ = f.__name__
+        return wrapper
+    return decorator
 
 def send_mpv_command(command):
     """使用 socat 向 mpv socket 发送命令"""
@@ -103,6 +129,7 @@ def auto_cache_worker():
 # API路由
 
 @app.route('/mpv/pause', methods=['GET'])
+@log_operation("播放/暂停切换")
 def pause_toggle():
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
@@ -110,6 +137,7 @@ def pause_toggle():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/next', methods=['GET'])
+@log_operation("下一首")
 def next_track():
     success, message = send_mpv_command(["playlist-next"])
     if success:
@@ -117,6 +145,7 @@ def next_track():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/prev', methods=['GET'])
+@log_operation("上一首")
 def prev_track():
     success, message = send_mpv_command(["playlist-prev"])
     if success:
@@ -124,6 +153,7 @@ def prev_track():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/stop', methods=['GET'])
+@log_operation("停止播放")
 def stop_playback():
     success, message = send_mpv_command(["quit"])
     if success:
@@ -131,6 +161,7 @@ def stop_playback():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/volume', methods=['GET'])
+@log_operation("调整音量")
 def adjust_volume():
     try:
         value = int(request.args.get('value', 0))
@@ -144,6 +175,7 @@ def adjust_volume():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/volume/set', methods=['GET'])
+@log_operation("设置音量")
 def set_volume():
     try:
         value = int(request.args.get('value', 50))
@@ -158,6 +190,7 @@ def set_volume():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/shuffle', methods=['GET'])
+@log_operation("随机播放")
 def shuffle_playlist():
     """随机播放"""
     # 获取当前播放列表
@@ -172,6 +205,7 @@ def shuffle_playlist():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/play/<int:index>', methods=['GET'])
+@log_operation("播放指定歌曲")
 def play_track(index):
     """播放指定索引的歌曲"""
     success, message = send_mpv_command(["playlist-play-index", str(index)])
@@ -200,19 +234,17 @@ def get_status():
     playlist, _ = get_mpv_property("playlist")
     status["playlist"] = playlist if playlist is not None else []
     
-    # 获取播放位置
+    # 获取播放位置和持续时间
     position, _ = get_mpv_property("time-pos")
-    status["position"] = position if position is not None else 0
-    
-    # 获取总时长
     duration, _ = get_mpv_property("duration")
+    status["position"] = position if position is not None else 0
     status["duration"] = duration if duration is not None else 0
     
     return jsonify(status), 200
 
 @app.route('/files', methods=['GET'])
 def list_files():
-    """列出本地音频文件"""
+    """列出所有音频文件"""
     files = get_audio_files()
     return jsonify({"files": files}), 200
 
@@ -220,45 +252,57 @@ def list_files():
 def search_files():
     """搜索音频文件"""
     query = request.args.get('q', '').lower()
-    files = get_audio_files()
-    if query:
-        files = [f for f in files if query in f.lower()]
-    return jsonify({"files": files}), 200
+    all_files = get_audio_files()
+    
+    if not query:
+        return jsonify({"files": all_files}), 200
+    
+    # 筛选匹配的文件
+    matched_files = [f for f in all_files if query in f.lower()]
+    return jsonify({"files": matched_files}), 200
 
 @app.route('/files/sync', methods=['POST'])
+@log_operation("手动同步文件")
 def sync_files():
     """手动同步NAS文件"""
     success, message = rclone_sync()
     if success:
-        return jsonify({"status": "ok", "message": message}), 200
+        return jsonify({"status": "ok", "message": "Sync completed successfully"}), 200
     return jsonify({"status": "error", "message": message}), 500
 
-@app.route('/cache/auto', methods=['POST'])
-def toggle_auto_cache():
-    """切换自动缓存功能"""
-    global auto_cache_thread, auto_cache_running
-    
-    action = request.args.get('action', 'start')
-    
-    if action == 'start':
-        if not auto_cache_running:
-            auto_cache_running = True
-            auto_cache_thread = threading.Thread(target=auto_cache_worker)
-            auto_cache_thread.daemon = True
-            auto_cache_thread.start()
-            return jsonify({"status": "ok", "message": "Auto cache started"}), 200
+@app.route('/logs', methods=['GET'])
+def get_logs():
+    """获取操作日志"""
+    try:
+        log_file = f"{LOG_DIR}/operations.log"
+        if os.path.exists(log_file):
+            with open(log_file, "r") as f:
+                lines = f.readlines()
+                # 返回最后100行日志
+                return jsonify({"logs": lines[-100:] if len(lines) > 100 else lines}), 200
         else:
-            return jsonify({"status": "ok", "message": "Auto cache already running"}), 200
-    elif action == 'stop':
-        auto_cache_running = False
-        return jsonify({"status": "ok", "message": "Auto cache stopped"}), 200
-    else:
-        return jsonify({"status": "error", "message": "Invalid action. Use 'start' or 'stop'"}), 400
+            return jsonify({"logs": []}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/logs/clear', methods=['POST'])
+@log_operation("清空操作日志")
+def clear_logs():
+    """清空操作日志"""
+    try:
+        log_file = f"{LOG_DIR}/operations.log"
+        if os.path.exists(log_file):
+            open(log_file, "w").close()
+            return jsonify({"message": "日志已清空"}), 200
+        else:
+            return jsonify({"message": "日志文件不存在"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
 def web_control_panel():
     """网页控制面板"""
-    html_template = '''
+    html_template = """
 <!DOCTYPE html>
 <html>
 <head>
@@ -285,13 +329,13 @@ def web_control_panel():
         }
         .controls {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 10px;
             margin-bottom: 20px;
         }
         .control-btn {
             padding: 15px;
-            font-size: 16px;
+            font-size: 14px;
             border: none;
             border-radius: 5px;
             cursor: pointer;
@@ -359,6 +403,32 @@ def web_control_panel():
             border-radius: 5px;
             cursor: pointer;
         }
+        .log-section {
+            margin-top: 30px;
+        }
+        .log-section h3 {
+            margin-bottom: 10px;
+        }
+        .log-buttons {
+            margin-bottom: 10px;
+        }
+        .log-btn {
+            padding: 8px 12px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .log-container {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+        }
     </style>
 </head>
 <body>
@@ -395,6 +465,17 @@ def web_control_panel():
             <h3>🎵 歌曲列表</h3>
             <div id="file-list">
                 <!-- 文件列表将在这里显示 -->
+            </div>
+        </div>
+        
+        <div class="log-section">
+            <h3>📝 操作日志</h3>
+            <div class="log-buttons">
+                <button class="log-btn primary" onclick="loadLogs()">刷新日志</button>
+                <button class="log-btn danger" onclick="clearLogs()">清空日志</button>
+            </div>
+            <div class="log-container" id="log-container">
+                <div id="log-content">加载中...</div>
             </div>
         </div>
     </div>
@@ -464,6 +545,7 @@ def web_control_panel():
                 .then(data => {
                     console.log('API Response:', data);
                     setTimeout(updateStatus, 500); // 稍后更新状态
+                    loadLogs(); // 更新日志
                 })
                 .catch(error => {
                     console.error('API Error:', error);
@@ -511,9 +593,46 @@ def web_control_panel():
                         if (data.status === 'ok') {
                             getAllFiles(); // 更新文件列表
                         }
+                        loadLogs(); // 更新日志
                     })
                     .catch(error => {
                         console.error('Sync Error:', error);
+                    });
+            }
+        }
+        
+        // 日志相关函数
+        function loadLogs() {
+            fetch('/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const logContent = document.getElementById('log-content');
+                    if (data.logs && data.logs.length > 0) {
+                        logContent.innerHTML = data.logs.reverse().join('<br>');
+                    } else {
+                        logContent.innerHTML = '暂无操作日志';
+                    }
+                    
+                    const logContainer = document.getElementById('log-container');
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                })
+                .catch(error => {
+                    console.error('Error loading logs:', error);
+                    document.getElementById('log-content').innerHTML = '加载日志失败';
+                });
+        }
+        
+        function clearLogs() {
+            if (confirm('确定要清空所有操作日志吗？')) {
+                fetch('/logs/clear', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        alert(data.message);
+                        loadLogs();
+                    })
+                    .catch(error => {
+                        console.error('Clear logs error:', error);
+                        alert('清空日志失败');
                     });
             }
         }
@@ -522,9 +641,12 @@ def web_control_panel():
         document.addEventListener('DOMContentLoaded', function() {
             updateStatus();
             getAllFiles();
+            loadLogs(); // 加载日志
             
             // 每5秒更新一次状态
             setInterval(updateStatus, 5000);
+            // 每10秒更新一次日志
+            setInterval(loadLogs, 10000);
             
             // 搜索框回车事件
             document.getElementById('search-input').addEventListener('keypress', function(e) {
@@ -536,7 +658,7 @@ def web_control_panel():
     </script>
 </body>
 </html>
-    '''
+    """
     return render_template_string(html_template)
 
 if __name__ == '__main__':

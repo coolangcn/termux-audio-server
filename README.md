@@ -12,12 +12,6 @@
 - 🔄 自动同步 NAS 音乐文件
 - 🎛️ 实时播放状态显示
 
-## 完整链路
-
-```
-NAS → rclone → Termux本地缓存 → mpv真·socket → Flask → 手机/电脑浏览器一键暂停/切歌
-```
-
 ## 一键部署（推荐）
 
 ### 使用一键部署脚本（Termux环境）
@@ -105,13 +99,66 @@ killall mpv python && rm -rf ~/nas_audio_cache ~/mpv_playlist_*
 ~/stop_audio_server
 ```
 
-## 未来功能计划
+## 常见问题及解决方案
 
-- [ ] 安卓桌面小部件
-- [ ] 更丰富的播放列表管理
-- [ ] 音乐文件详细信息显示
-- [ ] 播放历史记录
-- [ ] 多设备同步控制
+### 1. MPV Socket连接失败
+
+如果出现"[ipc] Could not bind IPC socket"错误，请运行修复脚本：
+
+```bash
+# 下载并运行MPV Socket修复脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_mpv_socket.sh
+chmod +x fix_mpv_socket.sh
+./fix_mpv_socket.sh
+
+# 重启服务
+~/stop_audio_server
+~/start_audio_server
+```
+
+### 2. 无法通过网络访问控制面板
+
+如果只能通过127.0.0.1访问，请运行网络配置修复脚本：
+
+```bash
+# 下载并运行网络配置修复脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_network_config.sh
+chmod +x fix_network_config.sh
+./fix_network_config.sh
+
+# 重启服务
+~/stop_audio_server
+~/start_audio_server
+```
+
+### 3. API服务无法启动或无法访问（Connection refused）
+
+如果出现"Connection refused"错误，说明API服务没有正确启动或绑定到正确的网络接口：
+
+```bash
+# 下载并运行API绑定修复脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_api_binding.sh
+chmod +x fix_api_binding.sh
+./fix_api_binding.sh
+
+# 重启服务
+~/stop_audio_server
+~/start_audio_server
+```
+
+### 4. rclone同步失败
+
+检查以下几点：
+1. 确保rclone配置正确：`rclone config`
+2. 测试远程存储连接：`rclone lsd synology:`
+3. 检查网络连接是否正常
+
+### 5. 音频播放问题
+
+如果音频无法播放，请检查：
+1. MPV是否正确安装：`mpv --version`
+2. 音频文件格式是否支持
+3. Termux是否有音频输出权限
 
 ## 故障排除
 

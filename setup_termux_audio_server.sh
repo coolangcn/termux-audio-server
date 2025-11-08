@@ -53,6 +53,8 @@ chmod +x ~/termux-audio-server/*.py
 echo "🔗 创建软链接..."
 ln -sf ~/termux-audio-server/start_remote_audio.sh ~/start_audio_server
 ln -sf ~/termux-audio-server/stop_audio_server.sh ~/stop_audio_server
+ln -sf ~/termux-audio-server/fix_mpv_socket.sh ~/fix_mpv_socket
+ln -sf ~/termux-audio-server/fix_network_config.sh ~/fix_network_config
 
 # 配置rclone
 echo ""
@@ -127,6 +129,8 @@ echo ""
 echo "已创建的脚本:"
 echo "  - 启动脚本: ~/start_audio_server"
 echo "  - 停止脚本: ~/stop_audio_server"
+echo "  - MPV Socket修复脚本: ~/fix_mpv_socket"
+echo "  - 网络配置修复脚本: ~/fix_network_config"
 echo "  - 部署目录: ~/termux-audio-server/"
 echo ""
 echo "📌 下一步操作:"
@@ -138,6 +142,8 @@ echo ""
 echo "💡 使用提示:"
 echo "- 启动服务器: ~/start_audio_server"
 echo "- 停止服务器: ~/stop_audio_server"
+echo "- 修复MPV Socket问题: ~/fix_mpv_socket"
+echo "- 修复网络配置问题: ~/fix_network_config"
 echo "- 查看日志: cat ~/audio_server.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"

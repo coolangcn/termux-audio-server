@@ -65,6 +65,7 @@ ln -sf ~/termux-audio-server/fix_api_binding_issue.sh ~/fix_api_binding_issue
 ln -sf ~/termux-audio-server/add_operation_log.sh ~/add_operation_log
 ln -sf ~/termux-audio-server/restart_with_logging.sh ~/restart_with_logging
 ln -sf ~/termux-audio-server/fix_web_ui_issues.sh ~/fix_web_ui_issues
+ln -sf ~/termux-audio-server/simple_fix_ui.sh ~/simple_fix_ui
 
 # 配置rclone
 echo ""
@@ -151,6 +152,7 @@ echo "  - API绑定问题修复脚本: ~/fix_api_binding_issue"
 echo "  - 操作日志添加脚本: ~/add_operation_log"
 echo "  - 带日志功能的重启脚本: ~/restart_with_logging"
 echo "  - 网页UI问题修复脚本: ~/fix_web_ui_issues"
+echo "  - 简单UI修复脚本: ~/simple_fix_ui"
 echo "  - 部署目录: ~/termux-audio-server/"
 echo ""
 echo "📌 下一步操作:"
@@ -174,6 +176,7 @@ echo "- 修复API绑定问题: ~/fix_api_binding_issue"
 echo "- 添加操作日志: ~/add_operation_log"
 echo "- 带日志功能的重启: ~/restart_with_logging"
 echo "- 修复网页UI问题: ~/fix_web_ui_issues"
+echo "- 简单UI修复: ~/simple_fix_ui"
 echo "- 查看日志: cat ~/api_server_debug.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"

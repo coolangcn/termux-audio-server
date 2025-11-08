@@ -18,7 +18,24 @@
 NAS → rclone → Termux本地缓存 → mpv真·socket → Flask → 手机/电脑浏览器一键暂停/切歌
 ```
 
-## 安装与配置
+## 一键部署（推荐）
+
+### 使用一键部署脚本（Termux环境）
+
+```bash
+# 下载并运行一键部署脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/setup_termux_audio_server.sh
+chmod +x setup_termux_audio_server.sh
+./setup_termux_audio_server.sh
+```
+
+脚本将自动完成以下操作：
+1. 安装所有必要的依赖（Python, Flask, MPV, Rclone, Socat等）
+2. 下载项目文件到 ~/termux-audio-server/
+3. 创建启动和停止脚本
+4. 引导配置rclone远程存储
+
+## 手动安装与配置
 
 ### 1. 安装依赖
 
@@ -81,6 +98,11 @@ chmod +x ~/start_remote_audio.sh
 
 ```bash
 killall mpv python && rm -rf ~/nas_audio_cache ~/mpv_playlist_*
+```
+
+或者使用我们提供的停止脚本：
+```bash
+~/stop_audio_server
 ```
 
 ## 未来功能计划

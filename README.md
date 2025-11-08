@@ -11,6 +11,7 @@
 - 📱 手机/电脑浏览器一键控制
 - 🔄 自动同步 NAS 音乐文件
 - 🎛️ 实时播放状态显示
+- 📝 操作日志记录
 
 ## 一键部署（推荐）
 
@@ -87,6 +88,8 @@ chmod +x ~/start_remote_audio.sh
 | [/files](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 列出所有音乐文件 |
 | [/files/search](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 搜索音乐文件 (参数: q) |
 | [/files/sync](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | POST | 手动同步NAS文件 |
+| [/logs](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 获取操作日志 |
+| [/logs/clear](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | POST | 清空操作日志 |
 
 ## 停止服务
 
@@ -205,7 +208,22 @@ chmod +x fix_api_binding_issue.sh
 ~/start_api_service.sh
 ```
 
-### 8. 全面诊断和修复API服务问题
+### 8. 添加操作日志功能
+
+如果想要为音频控制面板添加操作日志功能，请运行操作日志添加脚本：
+
+```bash
+# 下载并运行操作日志添加脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/add_operation_log.sh
+chmod +x add_operation_log.sh
+./add_operation_log.sh
+
+# 重启服务
+~/stop_audio_server
+~/start_audio_server
+```
+
+### 9. 全面诊断和修复API服务问题
 
 如果以上方法都无法解决问题，请使用全面诊断脚本：
 
@@ -219,14 +237,14 @@ chmod +x comprehensive_diagnose.sh
 ~/start_api_debug.sh
 ```
 
-### 9. rclone同步失败
+### 10. rclone同步失败
 
 检查以下几点：
 1. 确保rclone配置正确：`rclone config`
 2. 测试远程存储连接：`rclone lsd synology:`
 3. 检查网络连接是否正常
 
-### 10. 音频播放问题
+### 11. 音频播放问题
 
 如果音频无法播放，请检查：
 1. MPV是否正确安装：`mpv --version`

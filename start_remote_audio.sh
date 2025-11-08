@@ -8,7 +8,7 @@ MPV_SOCKET_PATH="/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
 
 # --idle: 即使列表播完也保持进程存活，继续监听 IPC
 # --loop=inf: 循环播放列表
-# --shuffle: 随机播放
+# 移除了随机播放参数
 MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf"
 
 # 使用增强版API脚本
@@ -91,6 +91,7 @@ export FLASK_DEBUG=0
 cd ~/termux-audio-server
 
 # 在后台启动 Python 脚本并记录日志以便调试
+# 使用修改后的 enhanced_mpv_api.py
 python "$API_SCRIPT" > ~/api_server_startup.log 2>&1 &
 API_PID=$!
 echo "✅ API 服务 (PID $API_PID) 已在后台启动。"
@@ -114,8 +115,6 @@ echo "控制命令示例："
 echo "暂停/播放: GET http://$IP_ADDRESS:$API_PORT/mpv/pause"
 echo "下一首:   GET http://$IP_ADDRESS:$API_PORT/mpv/next"
 echo "上一首:   GET http://$IP_ADDRESS:$API_PORT/mpv/prev"
-echo "随机播放: GET http://$IP_ADDRESS:$API_PORT/mpv/shuffle"
 echo "搜索歌曲: GET http://$IP_ADDRESS:$API_PORT/files/search?q=关键字"
-echo "同步文件: POST http://$IP_ADDRESS:$API_PORT/files/sync"
 echo "停止所有服务: killall mpv python && rm -rf $LOCAL_DIR $PLAYLIST_FILE"
 echo "--------------------------------------------------------"

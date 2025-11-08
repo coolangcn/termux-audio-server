@@ -37,11 +37,22 @@ mkdir -p ~/termux-audio-server
 echo "🌐 克隆GitHub仓库..."
 cd ~
 rm -rf termux-audio-server-temp
-git clone https://github.com/coolangcn/termux-audio-server.git termux-audio-server-temp
+git clone https://github.com/coolangcn/termux-audio-server.git termux-audio-server-temp || {
+    echo "克隆仓库失败，尝试下载单个文件..."
+    mkdir -p termux-audio-server-temp
+    cd termux-audio-server-temp
+    # 使用修改优化后的enhanced_mpv_api.py版本
+    curl -o enhanced_mpv_api.py "https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/enhanced_mpv_api.py"
+    # 确保文件有执行权限
+    chmod +x enhanced_mpv_api.py
+}
 
 # 复制文件到用户目录
 echo "📋 复制文件到用户目录..."
 cp -r termux-audio-server-temp/* ~/termux-audio-server/
+# 特别复制优化后的enhanced_mpv_api.py到主目录以便快速访问
+cp termux-audio-server-temp/enhanced_mpv_api.py ~/enhanced_mpv_api.py
+chmod +x ~/enhanced_mpv_api.py
 rm -rf termux-audio-server-temp
 
 # 设置执行权限
@@ -186,5 +197,10 @@ echo "- 测试和修复日志: ~/test_and_fix_logging"
 echo "- 查看日志: cat ~/api_server_debug.log"
 echo ""
 echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"
+echo ""
+echo "🔧 已优化功能:"  
+echo "  • 使用增强版enhanced_mpv_api.py"  
+echo "  • 音量控制优化"  
+echo "  • 界面样式改进"  
 echo ""
 echo "如有任何问题，请查看GitHub上的README.md文件或提交issue。"

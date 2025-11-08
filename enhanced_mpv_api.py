@@ -328,10 +328,11 @@ def web_control_panel():
             background-color: #f0f0f0;
         }
         .container {
-            background-color: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            border: 1px solid rgba(255,255,255,0.2);
         }
         h1 {
             text-align: center;
@@ -344,15 +345,18 @@ def web_control_panel():
             margin-bottom: 20px;
         }
         .control-btn {
-            padding: 15px;
-            font-size: 14px;
+            padding: 18px;
+            font-size: 16px;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            transition: background-color 0.3s;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
         .control-btn:hover {
-            opacity: 0.9;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
         .primary {
             background-color: #007bff;
@@ -378,17 +382,41 @@ def web_control_panel():
         }
         .volume-control input {
             flex: 1;
+            height: 10px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .volume-control input::-webkit-slider-thumb {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007bff;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+        }
+        .volume-control input::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            background: #0056b3;
         }
         .file-list {
             margin-top: 20px;
         }
         .file-item {
-            padding: 10px;
-            border-bottom: 1px solid #eee;
+            padding: 12px 15px;
+            border-bottom: 1px solid #e9ecef;
             cursor: pointer;
+            transition: all 0.3s ease;
+            border-radius: 6px;
+            margin-bottom: 5px;
         }
         .file-item:hover {
-            background-color: #f8f9fa;
+            background-color: rgba(0,123,255,0.1);
+            transform: translateX(5px);
+            border-left: 4px solid #007bff;
         }
         .status {
             padding: 10px;
@@ -455,9 +483,6 @@ def web_control_panel():
             <button class="control-btn primary" onclick="pauseToggle()">⏯️ 播放/暂停</button>
             <button class="control-btn primary" onclick="nextTrack()">⏭️ 下一首</button>
             <button class="control-btn primary" onclick="prevTrack()">⏮️ 上一首</button>
-            <button class="control-btn secondary" onclick="shufflePlaylist()">🔀 随机播放</button>
-            <button class="control-btn success" onclick="syncFiles()">🔄 同步文件</button>
-            <button class="control-btn danger" onclick="stopPlayback()">⏹️ 停止</button>
         </div>
         
         <div class="volume-control">
@@ -586,41 +611,33 @@ def web_control_panel():
             callAPI('/mpv/prev');
         }
         
-        function stopPlayback() {
-            if (confirm('确定要停止播放吗？')) {
-                callAPI('/mpv/stop');
-            }
-        }
-        
-        function shufflePlaylist() {
-            callAPI('/mpv/shuffle');
-        }
+        // 这些功能已被移除但保留函数定义以避免错误
+        function stopPlayback() {}
+        function shufflePlaylist() {}
         
         function playTrack(index) {
             callAPI(`/mpv/play/${index}`);
         }
         
         function adjustVolume(value) {
+            // 立即更新UI
             document.getElementById('volume-value').textContent = value;
-            callAPI(`/mpv/volume/set?value=${value}`);
+            
+            // 发送API请求设置音量
+            fetch(`/mpv/volume/set?value=${value}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('音量设置成功:', data);
+                    // 强制更新状态以确保同步
+                    setTimeout(updateStatus, 100);
+                })
+                .catch(error => {
+                    console.error('音量设置失败:', error);
+                });
         }
         
-        function syncFiles() {
-            if (confirm('确定要同步NAS文件吗？')) {
-                fetch('/files/sync', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        alert(data.message);
-                        if (data.status === 'ok') {
-                            getAllFiles(); // 更新文件列表
-                        }
-                        loadLogs(); // 更新日志
-                    })
-                    .catch(error => {
-                        console.error('Sync Error:', error);
-                    });
-            }
-        }
+        // 同步文件功能已被移除
+        function syncFiles() {}
         
         // 日志相关函数
         function loadLogs() {

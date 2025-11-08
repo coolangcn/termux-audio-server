@@ -12,7 +12,7 @@ MPV_SOCKET_PATH="/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
 MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf"
 
 # 使用增强版API脚本
-API_SCRIPT=~/enhanced_mpv_api.py
+API_SCRIPT=~/termux-audio-server/enhanced_mpv_api.py
 
 API_PORT=5000
 FILE_REGEX='.*\.\(mp4\|mp3\|flac\|ogg\|aac\|m4a\|wav\)'
@@ -82,15 +82,23 @@ fi
 # --- 4. 启动 Flask API 服务 ---
 echo "--- 4. 启动 Flask API 服务 (端口 $API_PORT) ---"
 
-# 在后台启动 Python 脚本
-python "$API_SCRIPT" >/dev/null 2>&1 & 
+# 设置环境变量以确保API服务正确绑定
+export API_PORT=$API_PORT
+export FLASK_ENV=production
+export FLASK_DEBUG=0
+
+# 确保在正确的目录中启动API服务
+cd ~/termux-audio-server
+
+# 在后台启动 Python 脚本并记录日志以便调试
+python "$API_SCRIPT" > ~/api_server_startup.log 2>&1 &
 API_PID=$!
 echo "✅ API 服务 (PID $API_PID) 已在后台启动。"
 
 # --- 5. 启动自动缓存服务 ---
 echo "--- 5. 启动自动缓存服务 ---"
 # 启动自动缓存（通过API控制）
-sleep 2  # 等待API服务启动
+sleep 3  # 等待API服务启动
 curl -X POST "http://localhost:$API_PORT/cache/auto?action=start" >/dev/null 2>&1
 echo "✅ 自动缓存服务已启动，将每30分钟检查一次新文件。"
 

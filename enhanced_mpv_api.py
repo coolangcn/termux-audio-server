@@ -541,5 +541,7 @@ def web_control_panel():
 
 if __name__ == '__main__':
     # 注意：0.0.0.0 允许从外部设备访问
+    import os
     API_PORT = int(os.environ.get('API_PORT', 5000))
-    app.run(host='0.0.0.0', port=API_PORT, debug=False)
+    print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")
+    app.run(host='0.0.0.0', port=API_PORT, debug=False, threaded=True)

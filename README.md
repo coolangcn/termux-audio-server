@@ -175,7 +175,22 @@ chmod +x update_web_ui.sh
 ~/start_audio_server
 ```
 
-### 6. API服务完全无法启动
+### 6. UI更新后API服务无法访问
+
+如果在运行UI更新脚本后API服务无法访问，请运行API修复脚本：
+
+```bash
+# 下载并运行API修复脚本
+curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_api_after_ui_update.sh
+chmod +x fix_api_after_ui_update.sh
+./fix_api_after_ui_update.sh
+
+# 重启服务
+~/stop_audio_server
+~/start_audio_server
+```
+
+### 7. API服务完全无法启动
 
 如果以上方法都无法解决问题，请使用综合诊断脚本：
 
@@ -189,14 +204,14 @@ chmod +x diagnose_and_fix_api.sh
 ~/start_api_manual.sh
 ```
 
-### 7. rclone同步失败
+### 8. rclone同步失败
 
 检查以下几点：
 1. 确保rclone配置正确：`rclone config`
 2. 测试远程存储连接：`rclone lsd synology:`
 3. 检查网络连接是否正常
 
-### 8. 音频播放问题
+### 9. 音频播放问题
 
 如果音频无法播放，请检查：
 1. MPV是否正确安装：`mpv --version`

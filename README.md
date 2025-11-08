@@ -1,261 +1,84 @@
-# Termux 音频服务器
+# Termux Audio Server
 
-一个基于 Termux 的远程音频播放控制系统，可通过浏览器控制音乐播放。
+一个基于Termux的远程音频播放服务器，支持通过Web界面或API控制音乐播放。
 
 ## 功能特性
 
-- 🎵 通过浏览器控制音乐播放（暂停/播放、上一首、下一首、音量控制）
-- 🔍 搜索本地音乐文件
-- 🔀 随机播放模式
-- 🌐 网页控制面板
-- 📱 手机/电脑浏览器一键控制
-- 🔄 自动同步 NAS 音乐文件
-- 🎛️ 实时播放状态显示
+- 🎵 简洁美观的Web界面音频控制面板
+- 📱 支持通过API远程控制
+- 🔊 优化的音量控制功能
+- 🔍 文件搜索功能
 - 📝 操作日志记录
 
-## 一键部署（推荐）
+## 安装部署
 
-### 使用一键部署脚本（Termux环境）
+### 准备工作
 
-```bash
-# 下载并运行一键部署脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/setup_termux_audio_server.sh
-chmod +x setup_termux_audio_server.sh
-./setup_termux_audio_server.sh
-```
+1. 安装Termux：从[F-Droid](https://f-droid.org/packages/com.termux/)或[Google Play](https://play.google.com/store/apps/details?id=com.termux)下载安装
+2. 授予Termux存储权限：`termux-setup-storage`
 
-脚本将自动完成以下操作：
-1. 安装所有必要的依赖（Python, Flask, MPV, Rclone, Socat等）
-2. 下载项目文件到 ~/termux-audio-server/
-3. 创建启动和停止脚本
-4. 引导配置rclone远程存储
-
-## 手动安装与配置
-
-### 1. 安装依赖
+### 一键部署
 
 ```bash
-chmod +x ~/install_dependencies.sh
-~/install_dependencies.sh
+curl -o setup_termux_audio_server.sh https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/setup_termux_audio_server.sh && chmod +x setup_termux_audio_server.sh && ./setup_termux_audio_server.sh
 ```
-
-### 2. 配置 rclone
-
-```bash
-rclone config
-```
-
-确保配置了一个名为 `synology` 的远程存储，路径指向包含音乐文件的目录。
-
-### 3. 修改配置（可选）
-
-编辑 [start_remote_audio.sh](file:///d%3A/python/termux-audio-server/start_remote_audio.sh) 文件中的以下变量：
-
-- `RCLONE_REMOTE`: rclone远程存储路径
-- `LOCAL_DIR`: 本地缓存目录
-- `API_PORT`: Web API端口
 
 ## 使用方法
 
 ### 启动服务
 
 ```bash
-chmod +x ~/start_remote_audio.sh
-~/start_remote_audio.sh
+./start_remote_audio.sh
 ```
 
-### 访问控制面板
+### Web界面
 
-启动成功后，会在终端显示访问地址，类似：
-```
-🌐 API 地址: http://192.168.1.100:5000
-🌐 控制面板: http://192.168.1.100:5000/
-```
+启动服务后，可以通过浏览器访问：http://<设备IP>:5000/
 
-在手机或电脑浏览器中打开控制面板地址即可使用。
+### API接口
 
-### API 接口
+- **播放/暂停**: `GET http://<设备IP>:5000/mpv/pause`
+- **下一首**: `GET http://<设备IP>:5000/mpv/next`
+- **上一首**: `GET http://<设备IP>:5000/mpv/prev`
+- **设置音量**: `GET http://<设备IP>:5000/mpv/volume/set?value=70`
+- **调整音量**: `GET http://<设备IP>:5000/mpv/volume?value=10`
+- **播放指定歌曲**: `GET http://<设备IP>:5000/mpv/play/<index>`
+- **获取播放状态**: `GET http://<设备IP>:5000/mpv/status`
+- **列出所有文件**: `GET http://<设备IP>:5000/files`
+- **搜索文件**: `GET http://<设备IP>:5000/files/search?q=<关键词>`
 
-| 接口 | 方法 | 描述 |
-|------|------|------|
-| [/mpv/pause](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 暂停/播放切换 |
-| [/mpv/next](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 下一首 |
-| [/mpv/prev](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 上一首 |
-| [/mpv/stop](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 停止播放 |
-| [/mpv/shuffle](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 随机播放 |
-| [/mpv/volume](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 调整音量 (参数: value) |
-| [/mpv/status](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 获取播放状态 |
-| [/files](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 列出所有音乐文件 |
-| [/files/search](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 搜索音乐文件 (参数: q) |
-| [/files/sync](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | POST | 手动同步NAS文件 |
-| [/logs](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | GET | 获取操作日志 |
-| [/logs/clear](file:///d%3A/python/termux-audio-server/%3CINVALID%3E) | POST | 清空操作日志 |
+## 项目结构
 
-## 停止服务
+- `enhanced_mpv_api.py`: 主要API实现（已优化）
+- `start_remote_audio.sh`: 启动脚本
+- `setup_termux_audio_server.sh`: 安装部署脚本
+- `requirements.txt`: Python依赖
 
-```bash
-killall mpv python && rm -rf ~/nas_audio_cache ~/mpv_playlist_*
-```
+## 依赖项
 
-或者使用我们提供的停止脚本：
-```bash
-~/stop_audio_server
-```
-
-## 常见问题及解决方案
-
-### 1. MPV Socket连接失败
-
-如果出现"[ipc] Could not bind IPC socket"错误，请运行修复脚本：
-
-```bash
-# 下载并运行MPV Socket修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_mpv_socket.sh
-chmod +x fix_mpv_socket.sh
-./fix_mpv_socket.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 2. 无法通过网络访问控制面板
-
-如果只能通过127.0.0.1访问，请运行网络配置修复脚本：
-
-```bash
-# 下载并运行网络配置修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_network_config.sh
-chmod +x fix_network_config.sh
-./fix_network_config.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 3. API服务无法启动或无法访问（Connection refused）
-
-如果出现"Connection refused"错误，说明API服务没有正确启动或绑定到正确的网络接口：
-
-```bash
-# 下载并运行API绑定修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_api_binding.sh
-chmod +x fix_api_binding.sh
-./fix_api_binding.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 4. 日志文件路径错误（FileNotFoundError）
-
-如果出现日志文件路径错误，请运行日志路径修复脚本：
-
-```bash
-# 下载并运行日志路径修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_logging_path.sh
-chmod +x fix_logging_path.sh
-./fix_logging_path.sh
-
-# 重新测试API服务器
-~/test_api_server.py
-```
-
-### 5. 网页控制面板UI更新
-
-如果想要更新网页控制面板为macOS风格的现代化界面，请运行UI更新脚本：
-
-```bash
-# 下载并运行UI更新脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/update_web_ui.sh
-chmod +x update_web_ui.sh
-./update_web_ui.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 6. UI更新后API服务无法访问
-
-如果在运行UI更新脚本后API服务无法访问，请运行API修复脚本：
-
-```bash
-# 下载并运行API修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_api_after_ui_update.sh
-chmod +x fix_api_after_ui_update.sh
-./fix_api_after_ui_update.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 7. API绑定问题修复
-
-如果API服务启动但无法访问，请运行API绑定问题修复脚本：
-
-```bash
-# 下载并运行API绑定问题修复脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/fix_api_binding_issue.sh
-chmod +x fix_api_binding_issue.sh
-./fix_api_binding_issue.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_api_service.sh
-```
-
-### 8. 添加操作日志功能
-
-如果想要为音频控制面板添加操作日志功能，请运行操作日志添加脚本：
-
-```bash
-# 下载并运行操作日志添加脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/add_operation_log.sh
-chmod +x add_operation_log.sh
-./add_operation_log.sh
-
-# 重启服务
-~/stop_audio_server
-~/start_audio_server
-```
-
-### 9. 全面诊断和修复API服务问题
-
-如果以上方法都无法解决问题，请使用全面诊断脚本：
-
-```bash
-# 下载并运行全面诊断脚本
-curl -O https://raw.githubusercontent.com/coolangcn/termux-audio-server/main/comprehensive_diagnose.sh
-chmod +x comprehensive_diagnose.sh
-./comprehensive_diagnose.sh
-
-# 以调试模式启动API服务
-~/start_api_debug.sh
-```
-
-### 10. rclone同步失败
-
-检查以下几点：
-1. 确保rclone配置正确：`rclone config`
-2. 测试远程存储连接：`rclone lsd synology:`
-3. 检查网络连接是否正常
-
-### 11. 音频播放问题
-
-如果音频无法播放，请检查：
-1. MPV是否正确安装：`mpv --version`
-2. 音频文件格式是否支持
-3. Termux是否有音频输出权限
+- Python 3
+- Flask
+- Flask-CORS
+- MPV
+- socat
 
 ## 故障排除
 
-如果遇到问题，请检查：
+如果遇到问题，可以尝试以下操作：
 
-1. 确保 rclone 配置正确
-2. 确保 NAS 网络连接正常
-3. 检查 MPV 是否正常运行
-4. 查看防火墙设置是否阻止了 API 端口
+1. 检查MPV是否正常运行
+2. 确保socket路径正确
+3. 检查网络连接和防火墙设置
+4. 查看日志文件获取更多信息
+
+## 更新日志
+
+### v2.0.0
+- 界面样式全面优化
+- 移除不必要的功能按钮（随机播放、同步、停止）
+- 修复音量控制问题
+- 精简项目结构
+
+## 许可证
+
+MIT

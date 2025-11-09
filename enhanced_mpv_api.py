@@ -319,6 +319,21 @@ def play_file(filename):
     if not success:
         return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
     
+    # 首先尝试将文件添加到播放列表并播放
+    success, message = send_mpv_command(["loadfile", local_path, "replace"])
+    if success:
+        return jsonify({
+            "status": "ok", 
+            "action": "play_file", 
+            "file": filename,
+            "local_path": local_path,
+            "source": "NAS" if "copied from NAS" in message else "cache",
+            "method": "loadfile"
+        }), 200
+    
+    # 如果loadfile失败，回退到重启MPV的方式
+    app.logger.warning("loadfile命令失败，回退到重启MPV的方式")
+    
     # 停止当前播放
     send_mpv_command(["quit"])
     time.sleep(0.5)  # 等待mpv退出
@@ -344,10 +359,51 @@ def play_file(filename):
             "action": "play_file", 
             "file": filename,
             "local_path": local_path,
-            "source": "NAS" if "copied from NAS" in message else "cache"
+            "source": "NAS" if "copied from NAS" in message else "cache",
+            "method": "restart"
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
+
+@app.route('/mpv/build_playlist', methods=['POST'])
+@log_operation("构建播放列表")
+def build_playlist():
+    """构建完整播放列表"""
+    try:
+        # 获取所有音频文件
+        all_files, message = rclone_list_files()
+        if not all_files:
+            # 如果NAS获取失败，使用本地文件
+            all_files = get_audio_files()
+        
+        if not all_files:
+            return jsonify({"status": "error", "message": "No audio files found"}), 500
+        
+        # 清空当前播放列表
+        send_mpv_command(["playlist-clear"])
+        time.sleep(0.1)
+        
+        # 逐个添加文件到播放列表
+        files_added = 0
+        for filename in all_files:
+            success, local_path, message = get_file_from_cache_or_nas(filename)
+            if success:
+                success, msg = send_mpv_command(["loadfile", local_path, "append"])
+                if success:
+                    files_added += 1
+                    app.logger.info(f"Added to playlist: {filename}")
+                else:
+                    app.logger.warning(f"Failed to add to playlist: {filename}, error: {msg}")
+        
+        return jsonify({
+            "status": "ok", 
+            "action": "build_playlist", 
+            "total_files": len(all_files),
+            "files_added": files_added
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/status', methods=['GET'])
 def get_status():
@@ -1101,8 +1157,15 @@ def web_control_panel():
             loadingMsg.textContent = `正在加载: ${filename}...`;
             fileList.appendChild(loadingMsg);
             
-            // 调用新的播放API
-            fetch(`/mpv/play/file/${encodeURIComponent(filename)}`)
+            // 首先构建播放列表，然后播放指定文件
+            fetch('/mpv/build_playlist', {method: 'POST'})
+                .then(response => response.json())
+                .then(playlistData => {
+                    console.log('播放列表构建成功:', playlistData);
+                    
+                    // 然后播放指定文件
+                    return fetch(`/mpv/play/file/${encodeURIComponent(filename)}`);
+                })
                 .then(response => response.json())
                 .then(data => {
                     // 移除加载消息

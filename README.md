@@ -43,6 +43,8 @@ curl -o setup_termux_audio_server.sh https://raw.githubusercontent.com/coolangcn
 - **设置音量**: `GET http://<设备IP>:5000/mpv/volume/set?value=70`
 - **调整音量**: `GET http://<设备IP>:5000/mpv/volume?value=10`
 - **播放指定歌曲**: `GET http://<设备IP>:5000/mpv/play/<index>`
+- **播放指定文件**: `GET http://<设备IP>:5000/mpv/play/file/<filename>`
+- **构建播放列表**: `POST http://<设备IP>:5000/mpv/build_playlist`
 - **获取播放状态**: `GET http://<设备IP>:5000/mpv/status`
 - **列出所有文件**: `GET http://<设备IP>:5000/files`
 - **搜索文件**: `GET http://<设备IP>:5000/files/search?q=<关键词>`
@@ -72,6 +74,12 @@ curl -o setup_termux_audio_server.sh https://raw.githubusercontent.com/coolangcn
 4. 查看日志文件获取更多信息
 
 ## 更新日志
+
+### v2.1.0
+- 修复下一首/上一首功能对WEBM文件无效的问题
+- 添加播放列表构建功能，支持所有音频格式
+- 改进MPV启动参数，增强稳定性
+- 增强错误处理和调试日志
 
 ### v2.0.0
 - 界面样式全面优化

@@ -135,6 +135,64 @@ def rclone_sync():
     except Exception as e:
         return False, str(e)
 
+def rclone_list_files():
+    """列出NAS上的音频文件（不下载）"""
+    try:
+        rclone_remote = "synology:download/bilibili/push"
+        
+        # 使用rclone lsjson获取文件列表
+        cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav'"
+        
+        import subprocess
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            try:
+                files_data = json.loads(result.stdout)
+                # 只返回文件名列表
+                file_list = [item['Path'] for item in files_data if not item.get('IsDir', False)]
+                return file_list, "Success"
+            except json.JSONDecodeError:
+                return [], "Failed to parse rclone output"
+        else:
+            return [], f"rclone command failed: {result.stderr}"
+    except Exception as e:
+        return [], str(e)
+
+def rclone_copy_file(remote_path, local_path):
+    """从NAS复制单个文件到本地"""
+    try:
+        rclone_remote = "synology:download/bilibili/push"
+        remote_file = f"{rclone_remote}/{remote_path}"
+        
+        # 确保本地目录存在
+        os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        
+        cmd = f"rclone copyto '{remote_file}' '{local_path}'"
+        result = os.system(cmd)
+        
+        if result == 0:
+            return True, "File copied successfully"
+        else:
+            return False, "Failed to copy file"
+    except Exception as e:
+        return False, str(e)
+
+def get_file_from_cache_or_nas(filename):
+    """从缓存获取文件，如果不存在则从NAS拉取"""
+    local_file_path = os.path.join(LOCAL_DIR, filename)
+    
+    # 检查本地是否已存在
+    if os.path.exists(local_file_path):
+        return True, local_file_path, "File exists in cache"
+    
+    # 从NAS拉取文件
+    success, message = rclone_copy_file(filename, local_file_path)
+    if success:
+        return True, local_file_path, "File copied from NAS"
+    else:
+        return False, None, f"Failed to get file from NAS: {message}"
+
 def auto_cache_worker():
     """自动缓存工作线程"""
     global auto_cache_running
@@ -234,6 +292,43 @@ def play_track(index):
         return jsonify({"status": "ok", "action": "play_track", "index": index}), 200
     return jsonify({"status": "error", "message": message}), 500
 
+@app.route('/mpv/play/file/<path:filename>', methods=['GET'])
+@log_operation("播放指定文件")
+def play_file(filename):
+    """播放指定文件（按需从NAS拉取）"""
+    # 从缓存或NAS获取文件
+    success, local_path, message = get_file_from_cache_or_nas(filename)
+    
+    if not success:
+        return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
+    
+    # 停止当前播放
+    send_mpv_command(["quit"])
+    time.sleep(0.5)  # 等待mpv退出
+    
+    # 使用mpv播放文件
+    import subprocess
+    try:
+        # 启动mpv播放指定文件
+        subprocess.Popen([
+            "mpv", 
+            "--no-video", 
+            "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
+            "--cache=yes",
+            "--cache-secs=60",
+            local_path
+        ])
+        
+        return jsonify({
+            "status": "ok", 
+            "action": "play_file", 
+            "file": filename,
+            "local_path": local_path,
+            "source": "NAS" if "copied from NAS" in message else "cache"
+        }), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
+
 @app.route('/mpv/status', methods=['GET'])
 def get_status():
     """获取播放状态"""
@@ -265,22 +360,33 @@ def get_status():
 
 @app.route('/files', methods=['GET'])
 def list_files():
-    """列出所有音频文件"""
-    files = get_audio_files()
-    return jsonify({"files": files}), 200
+    """列出所有音频文件（从NAS获取列表）"""
+    files, message = rclone_list_files()
+    if files:
+        return jsonify({"files": sorted(files)}), 200
+    else:
+        # 如果NAS获取失败，回退到本地文件
+        local_files = get_audio_files()
+        return jsonify({"files": local_files, "warning": f"Failed to get files from NAS: {message}"}), 200
 
 @app.route('/files/search', methods=['GET'])
 def search_files():
-    """搜索音频文件"""
+    """搜索音频文件（从NAS获取列表）"""
     query = request.args.get('q', '').lower()
-    all_files = get_audio_files()
+    
+    # 从NAS获取文件列表
+    nas_files, message = rclone_list_files()
+    
+    if not nas_files:
+        # 如果NAS获取失败，回退到本地文件
+        nas_files = get_audio_files()
     
     if not query:
-        return jsonify({"files": all_files}), 200
+        return jsonify({"files": sorted(nas_files)}), 200
     
     # 筛选匹配的文件
-    matched_files = [f for f in all_files if query in f.lower()]
-    return jsonify({"files": matched_files}), 200
+    matched_files = [f for f in nas_files if query in f.lower()]
+    return jsonify({"files": sorted(matched_files)}), 200
 
 @app.route('/files/sync', methods=['POST'])
 @log_operation("手动同步文件")
@@ -359,6 +465,67 @@ def clear_logs():
     except Exception as e:
         # 记录错误到控制台
         print(f"清空日志时发生错误: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/cache/info', methods=['GET'])
+def get_cache_info():
+    """获取缓存信息"""
+    try:
+        if not os.path.exists(LOCAL_DIR):
+            return jsonify({"files": [], "total_size": 0, "file_count": 0}), 200
+        
+        files_info = []
+        total_size = 0
+        file_count = 0
+        
+        for filename in os.listdir(LOCAL_DIR):
+            file_path = os.path.join(LOCAL_DIR, filename)
+            if os.path.isfile(file_path):
+                size = os.path.getsize(file_path)
+                mtime = os.path.getmtime(file_path)
+                files_info.append({
+                    "name": filename,
+                    "size": size,
+                    "size_mb": round(size / (1024 * 1024), 2),
+                    "modified": time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(mtime))
+                })
+                total_size += size
+                file_count += 1
+        
+        return jsonify({
+            "files": sorted(files_info, key=lambda x: x["name"]),
+            "total_size": total_size,
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "file_count": file_count
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/cache/clear', methods=['POST'])
+@log_operation("清理缓存")
+def clear_cache():
+    """清理缓存文件"""
+    try:
+        if not os.path.exists(LOCAL_DIR):
+            return jsonify({"message": "缓存目录不存在"}), 200
+        
+        removed_count = 0
+        removed_size = 0
+        
+        for filename in os.listdir(LOCAL_DIR):
+            file_path = os.path.join(LOCAL_DIR, filename)
+            if os.path.isfile(file_path):
+                size = os.path.getsize(file_path)
+                os.remove(file_path)
+                removed_count += 1
+                removed_size += size
+        
+        return jsonify({
+            "message": f"缓存已清理，删除了 {removed_count} 个文件，释放了 {round(removed_size / (1024 * 1024), 2)} MB 空间",
+            "removed_count": removed_count,
+            "removed_size_mb": round(removed_size / (1024 * 1024), 2)
+        }), 200
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
@@ -636,6 +803,38 @@ def web_control_panel():
             border: 1px solid #e0e0e0;
         }
         
+        /* 缓存管理区域 */
+        .cache-section {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f0f8ff;
+            border-radius: 12px;
+            border: 1px solid #e1f0ff;
+        }
+        
+        .cache-section h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #4a90e2;
+        }
+        
+        .cache-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .cache-info {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            height: 100px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #e1f0ff;
+        }
+        
         /* 响应式设计 */
         @media (max-width: 480px) {
             body {
@@ -695,6 +894,17 @@ def web_control_panel():
             </div>
         </div>
         
+        <div class="cache-section">
+            <h3>💾 缓存管理</h3>
+            <div class="cache-buttons">
+                <button class="log-btn primary" onclick="getCacheInfo()">刷新缓存信息</button>
+                <button class="log-btn danger" onclick="clearCache()">清空缓存</button>
+            </div>
+            <div class="cache-info" id="cache-info">
+                <div id="cache-content">加载中...</div>
+            </div>
+        </div>
+        
         <div class="log-section">
             <h3>📝 操作日志</h3>
             <div class="log-buttons">
@@ -743,11 +953,14 @@ def web_control_panel():
             const fileList = document.getElementById('file-list');
             fileList.innerHTML = '';
             
+            // 存储当前文件列表到全局变量
+            window.currentFileList = files;
+            
             files.forEach((file, index) => {
                 const fileItem = document.createElement('div');
                 fileItem.className = 'file-item';
                 fileItem.textContent = file;
-                fileItem.onclick = () => playTrack(index);
+                fileItem.onclick = () => playFileByName(file);
                 fileList.appendChild(fileItem);
             });
         }
@@ -825,6 +1038,78 @@ def web_control_panel():
             callAPI(`/mpv/play/${index}`);
         }
         
+        function playFileByName(filename) {
+            // 显示加载状态
+            const fileList = document.getElementById('file-list');
+            const loadingMsg = document.createElement('div');
+            loadingMsg.id = 'loading-msg';
+            loadingMsg.style.cssText = 'color: #666; font-style: italic; padding: 10px; text-align: center;';
+            loadingMsg.textContent = `正在加载: ${filename}...`;
+            fileList.appendChild(loadingMsg);
+            
+            // 调用新的播放API
+            fetch(`/mpv/play/file/${encodeURIComponent(filename)}`)
+                .then(response => response.json())
+                .then(data => {
+                    // 移除加载消息
+                    const loadingElement = document.getElementById('loading-msg');
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
+                    if (data.status === 'ok') {
+                        console.log('播放成功:', data);
+                        // 更新状态和日志
+                        setTimeout(updateStatus, 500);
+                        loadLogs();
+                        
+                        // 显示成功消息
+                        const source = data.source === 'cache' ? '缓存' : 'NAS';
+                        showNotification(`开始播放: ${filename} (来自${source})`);
+                    } else {
+                        alert('播放失败: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    // 移除加载消息
+                    const loadingElement = document.getElementById('loading-msg');
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
+                    console.error('播放失败:', error);
+                    alert('播放失败: ' + error.message);
+                });
+        }
+        
+        function showNotification(message) {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                z-index: 1000;
+                font-size: 14px;
+                max-width: 300px;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // 3秒后自动移除
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
+        }
+        
         // 添加音量设置时间跟踪
         var lastVolumeSetTime = 0;
         const VOLUME_UPDATE_DELAY = 3000; // 音量设置后3秒内不自动更新
@@ -877,6 +1162,71 @@ def web_control_panel():
                     console.error('Error loading logs:', error);
                     document.getElementById('log-content').innerHTML = '加载日志失败';
                 });
+        }
+        
+        // 缓存管理函数
+        function getCacheInfo() {
+            const cacheContent = document.getElementById('cache-content');
+            cacheContent.innerHTML = '<span style="color: #666;">正在获取缓存信息...</span>';
+            
+            fetch('/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        let infoHtml = `<strong>缓存信息:</strong><br>`;
+                        infoHtml += `总大小: ${data.total_size}<br>`;
+                        infoHtml += `文件数量: ${data.file_count}<br>`;
+                        infoHtml += `缓存目录: ${data.cache_dir}<br>`;
+                        
+                        if (data.files && data.files.length > 0) {
+                            infoHtml += `<br><strong>缓存文件列表:</strong><br>`;
+                            data.files.forEach(file => {
+                                infoHtml += `• ${file.name} (${file.size}, ${file.modified})<br>`;
+                            });
+                        } else {
+                            infoHtml += `<br><em>暂无缓存文件</em>`;
+                        }
+                        
+                        cacheContent.innerHTML = infoHtml;
+                    } else {
+                        cacheContent.innerHTML = `<span style="color: #ff6b6b;">获取缓存信息失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting cache info:', error);
+                    cacheContent.innerHTML = '<span style="color: #ff6b6b;">获取缓存信息失败</span>';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('确定要清空所有缓存文件吗？')) {
+                const cacheContent = document.getElementById('cache-content');
+                cacheContent.innerHTML = '<span style="color: #666;">正在清空缓存...</span>';
+                
+                fetch('/cache/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.files_deleted} 个文件，释放了 ${data.space_freed}</span>`;
+                        
+                        // 2秒后重新获取缓存信息
+                        setTimeout(function() {
+                            getCacheInfo();
+                        }, 2000);
+                    } else {
+                        cacheContent.innerHTML = `<span style="color: #ff6b6b;">清空缓存失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error clearing cache:', error);
+                    cacheContent.innerHTML = '<span style="color: #ff6b6b;">清空缓存失败</span>';
+                });
+            }
         }
         
         function clearLogs() {
@@ -943,11 +1293,14 @@ def web_control_panel():
             updateStatus();
             getAllFiles();
             loadLogs();
+            getCacheInfo(); // 获取缓存信息
             
             // 每5秒更新一次状态
             setInterval(updateStatus, 5000);
             // 每10秒更新一次日志
             setInterval(loadLogs, 10000);
+            // 每30秒更新一次缓存信息
+            setInterval(getCacheInfo, 30000);
             
             // 搜索框回车事件
             document.getElementById('search-input').addEventListener('keypress', function(e) {

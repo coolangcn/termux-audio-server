@@ -493,10 +493,12 @@ def get_cache_info():
                 file_count += 1
         
         return jsonify({
+            "status": "ok",
             "files": sorted(files_info, key=lambda x: x["name"]),
-            "total_size": total_size,
+            "total_size": f"{round(total_size / (1024 * 1024), 2)} MB",
             "total_size_mb": round(total_size / (1024 * 1024), 2),
-            "file_count": file_count
+            "file_count": file_count,
+            "cache_dir": LOCAL_DIR
         }), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -521,6 +523,7 @@ def clear_cache():
                 removed_size += size
         
         return jsonify({
+            "status": "ok",
             "message": f"缓存已清理，删除了 {removed_count} 个文件，释放了 {round(removed_size / (1024 * 1024), 2)} MB 空间",
             "removed_count": removed_count,
             "removed_size_mb": round(removed_size / (1024 * 1024), 2)
@@ -1212,7 +1215,7 @@ def web_control_panel():
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'ok') {
-                        cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.files_deleted} 个文件，释放了 ${data.space_freed}</span>`;
+                        cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.removed_count} 个文件，释放了 ${data.removed_size_mb} MB</span>`;
                         
                         // 2秒后重新获取缓存信息
                         setTimeout(function() {

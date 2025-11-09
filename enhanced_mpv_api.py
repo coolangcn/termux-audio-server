@@ -683,11 +683,14 @@ def web_control_panel():
                         document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
                     }
                     
-                    // 修复音量显示问题
-                    var volumeValue = Math.round(data.volume) || 0;
-                    document.getElementById('volume').textContent = volumeValue;
-                    document.getElementById('volume-slider').value = volumeValue;
-                    document.getElementById('volume-value').textContent = volumeValue;
+                    // 修复音量显示问题：如果用户最近3秒内设置了音量，则不覆盖用户设置
+                    var currentTime = Date.now();
+                    if (currentTime - lastVolumeSetTime > VOLUME_UPDATE_DELAY) {
+                        var volumeValue = Math.round(data.volume) || 0;
+                        document.getElementById('volume').textContent = volumeValue;
+                        document.getElementById('volume-slider').value = volumeValue;
+                        document.getElementById('volume-value').textContent = volumeValue;
+                    }
                 })
                 .catch(function(error) {
                     console.error('Error updating status:', error);
@@ -781,19 +784,28 @@ def web_control_panel():
             callAPI(`/mpv/play/${index}`);
         }
         
+        // 添加音量设置时间跟踪
+        var lastVolumeSetTime = 0;
+        const VOLUME_UPDATE_DELAY = 3000; // 音量设置后3秒内不自动更新
+        
         function adjustVolume(value) {
             // 立即更新所有音量显示元素，确保即时反馈
             document.getElementById('volume').textContent = value;
             document.getElementById('volume-value').textContent = value;
             document.getElementById('volume-slider').value = value;
             
+            // 记录最后设置音量的时间
+            lastVolumeSetTime = Date.now();
+            
             // 发送API请求设置音量
             fetch('/mpv/volume/set?value=' + value)
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     console.log('音量设置成功:', data);
-                    // 不立即调用updateStatus，避免覆盖用户正在调节的音量
-                    // 让定时更新来同步真实状态
+                    // 音量设置成功后，再发送一次确认请求确保设置生效
+                    setTimeout(function() {
+                        fetch('/mpv/volume/set?value=' + value);
+                    }, 500);
                 })
                 .catch(function(error) {
                     console.error('音量设置失败:', error);
@@ -828,16 +840,37 @@ def web_control_panel():
         
         function clearLogs() {
             if (confirm('确定要清空所有操作日志吗？')) {
-                fetch('/logs/clear', { method: 'POST' })
-                    .then(response => response.json())
-                    .then(data => {
-                        alert(data.message);
-                        loadLogs();
-                    })
-                    .catch(error => {
-                        console.error('Clear logs error:', error);
-                        alert('清空日志失败');
-                    });
+                // 使用更可靠的fetch调用方式，添加错误处理和超时
+                var timeoutId = setTimeout(function() {
+                    alert('清空日志请求超时，请稍后重试');
+                }, 5000);
+                
+                fetch('/logs/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(function(response) {
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error('响应状态: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    console.log('日志清空成功:', data);
+                    // 清空后立即更新UI
+                    document.getElementById('log-content').innerHTML = '暂无操作日志';
+                    alert(data.message || '日志已清空');
+                    // 重新加载日志以确保同步
+                    loadLogs();
+                })
+                .catch(function(error) {
+                    clearTimeout(timeoutId);
+                    console.error('清空日志失败:', error);
+                    alert('清空日志失败: ' + error.message);
+                });
             }
         }
         

@@ -312,12 +312,53 @@ def clear_logs():
     """清空操作日志"""
     try:
         log_file = f"{LOG_DIR}/operations.log"
+        
+        # 确保日志目录存在
+        os.makedirs(LOG_DIR, exist_ok=True)
+        
         if os.path.exists(log_file):
-            open(log_file, "w").close()
+            # 使用更安全的方式清空文件
+            with open(log_file, "w", encoding='utf-8') as f:
+                f.write("")
+            
+            # 重新配置日志处理器以确保日志继续工作
+            for handler in operation_logger.handlers[:]:
+                operation_logger.removeHandler(handler)
+            
+            # 重新添加文件处理器
+            file_handler = logging.FileHandler(f"{LOG_DIR}/operations.log")
+            file_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+            file_handler.setFormatter(formatter)
+            operation_logger.addHandler(file_handler)
+            operation_logger.propagate = False
+            
+            # 记录清空操作
+            operation_logger.info("操作日志已清空")
+            
             return jsonify({"message": "日志已清空"}), 200
         else:
-            return jsonify({"message": "日志文件不存在"}), 404
+            # 如果文件不存在，创建空文件
+            with open(log_file, "w", encoding='utf-8') as f:
+                f.write("")
+            
+            # 重新配置日志处理器
+            for handler in operation_logger.handlers[:]:
+                operation_logger.removeHandler(handler)
+            
+            file_handler = logging.FileHandler(f"{LOG_DIR}/operations.log")
+            file_handler.setLevel(logging.INFO)
+            formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+            file_handler.setFormatter(formatter)
+            operation_logger.addHandler(file_handler)
+            operation_logger.propagate = False
+            
+            operation_logger.info("操作日志已清空（新建文件）")
+            
+            return jsonify({"message": "日志文件已创建并清空"}), 200
     except Exception as e:
+        # 记录错误到控制台
+        print(f"清空日志时发生错误: {e}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
@@ -840,16 +881,24 @@ def web_control_panel():
         
         function clearLogs() {
             if (confirm('确定要清空所有操作日志吗？')) {
+                // 显示清空中状态
+                const logContent = document.getElementById('log-content');
+                logContent.innerHTML = '<span style="color: #666;">正在清空日志...</span>';
+                
                 // 使用更可靠的fetch调用方式，添加错误处理和超时
                 var timeoutId = setTimeout(function() {
-                    alert('清空日志请求超时，请稍后重试');
-                }, 5000);
+                    logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志请求超时，请稍后重试</span>';
+                    setTimeout(function() {
+                        loadLogs(); // 重新加载日志
+                    }, 2000);
+                }, 8000);
                 
                 fetch('/logs/clear', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
-                    }
+                    },
+                    timeout: 7000 // 设置7秒超时
                 })
                 .then(function(response) {
                     clearTimeout(timeoutId);
@@ -861,15 +910,22 @@ def web_control_panel():
                 .then(function(data) {
                     console.log('日志清空成功:', data);
                     // 清空后立即更新UI
-                    document.getElementById('log-content').innerHTML = '暂无操作日志';
-                    alert(data.message || '日志已清空');
-                    // 重新加载日志以确保同步
-                    loadLogs();
+                    logContent.innerHTML = '<span style="color: #28a745;">日志已清空</span>';
+                    
+                    // 显示成功消息，2秒后重新加载日志
+                    setTimeout(function() {
+                        loadLogs();
+                    }, 2000);
                 })
                 .catch(function(error) {
                     clearTimeout(timeoutId);
                     console.error('清空日志失败:', error);
-                    alert('清空日志失败: ' + error.message);
+                    logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志失败: ' + error.message + '</span>';
+                    
+                    // 3秒后重新加载日志
+                    setTimeout(function() {
+                        loadLogs();
+                    }, 3000);
                 });
             }
         }

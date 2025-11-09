@@ -1294,14 +1294,20 @@ def web_control_panel():
         // 自动播放下一首功能
         let autoPlayInterval;
         let lastFileCount = 0;
+        let lastCurrentFile = null; // 记录上一首播放的文件
+        let isPlaying = false; // 记录播放状态
         
         function checkAndAutoPlayNext() {
             // 获取当前播放状态
             fetch('/mpv/status')
                 .then(response => response.json())
                 .then(data => {
-                    // 检查是否播放结束（当前文件为空且之前有文件在播放）
-                    if (!data.current_file && data.position === 0 && data.duration === 0) {
+                    const hasCurrentFile = data.current_file && data.current_file.trim() !== '';
+                    const currentIsPlaying = hasCurrentFile && !data.paused;
+                    
+                    // 检测播放结束：从有文件播放到无文件，且上一首是播放状态
+                    if (!hasCurrentFile && lastCurrentFile && isPlaying) {
+                        console.log('检测到播放结束，上一首:', lastCurrentFile);
                         // 获取文件列表
                         fetch('/files')
                             .then(response => response.json())
@@ -1318,6 +1324,10 @@ def web_control_panel():
                                 console.error('获取文件列表失败:', error);
                             });
                     }
+                    
+                    // 更新状态记录
+                    lastCurrentFile = hasCurrentFile ? data.current_file : null;
+                    isPlaying = currentIsPlaying;
                 })
                 .catch(error => {
                     console.error('获取播放状态失败:', error);

@@ -15,8 +15,8 @@ MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf"
 API_SCRIPT=~/termux-audio-server/enhanced_mpv_api.py
 
 API_PORT=5000
-FILE_REGEX='.*\.\(mp4\|mp3\|flac\|ogg\|aac\|m4a\|wav\)'
-RCLONE_INCLUDES='--include "*.mp4" --include "*.mp3" --include "*.flac" --include "*.ogg" --include "*.aac" --include "*.m4a" --include "*.wav"'
+FILE_REGEX='.*\.\(mp4\|mp3\|flac\|ogg\|aac\|m4a\|wav\|webm\)'
+RCLONE_INCLUDES='--include "*.mp4" --include "*.mp3" --include "*.flac" --include "*.ogg" --include "*.aac" --include "*.m4a" --include "*.wav" --include "*.webm"'
 PLAYLIST_FILE=~/mpv_playlist_$$ 
 
 # 自动缓存配置

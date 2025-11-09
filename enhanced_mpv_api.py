@@ -97,7 +97,8 @@ def get_mpv_property(property_name):
             ['socat', '-t', '1', '-', f'UNIX-CONNECT:{MPV_SOCKET_PATH}'],
             input=json_command,
             text=True,
-            capture_output=True
+            capture_output=True,
+            timeout=2  # 添加超时限制
         )
         if result.returncode == 0:
             response_text = result.stdout.strip()
@@ -106,21 +107,45 @@ def get_mpv_property(property_name):
                     response = json.loads(response_text)
                     if 'data' in response:
                         app.logger.info(f"Successfully got property {property_name}: {response['data']}")
+                        # 特殊处理filename属性，确保返回字符串类型
+                        if property_name == "filename" and response['data'] is None:
+                            return "", "Success"
                         return response['data'], "Success"
                     elif 'error' in response:
                         app.logger.warning(f"MPV property error for {property_name}: {response['error']}")
+                        # 对于filename属性，如果出错则返回空字符串而不是None
+                        if property_name == "filename":
+                            return "", "MPV error but returning empty string for filename"
                         return None, f"MPV error: {response['error']}"
                 except json.JSONDecodeError:
                     app.logger.error(f"Failed to parse MPV response: {response_text}")
+                    # 对于filename属性，解析失败时返回空字符串
+                    if property_name == "filename":
+                        return "", "Failed to parse but returning empty string for filename"
                     return None, "Failed to parse MPV response"
             else:
                 app.logger.warning(f"Empty response from MPV for property {property_name}")
+                # 对于filename属性，空响应时返回空字符串
+                if property_name == "filename":
+                    return "", "Empty response but returning empty string for filename"
                 return None, "Empty response from MPV"
         else:
             app.logger.warning(f"Failed to get property {property_name}, return code: {result.returncode}, stderr: {result.stderr}")
+            # 对于filename属性，命令失败时返回空字符串
+            if property_name == "filename":
+                return "", "Command failed but returning empty string for filename"
             return None, f"Command failed with return code {result.returncode}"
+    except subprocess.TimeoutExpired:
+        app.logger.error(f"Timeout getting MPV property {property_name}")
+        # 对于filename属性，超时时返回空字符串
+        if property_name == "filename":
+            return "", "Timeout but returning empty string for filename"
+        return None, "Timeout getting MPV property"
     except Exception as e:
         app.logger.error(f"Exception getting MPV property {property_name}: {str(e)}")
+        # 对于filename属性，异常时返回空字符串
+        if property_name == "filename":
+            return "", "Exception but returning empty string for filename"
         return None, str(e)
 
 def get_audio_files():
@@ -422,6 +447,10 @@ def get_status():
     filename, filename_msg = get_mpv_property("filename")
     app.logger.info(f"Got filename property: {filename}, message: {filename_msg}")
     
+    # 确保filename是字符串类型
+    if filename is None:
+        filename = ""
+    
     if not filename:  # 如果filename为空，尝试获取path属性
         path, path_msg = get_mpv_property("path")
         app.logger.info(f"Got path property: {path}, message: {path_msg}")
@@ -437,7 +466,8 @@ def get_status():
         if media_title:
             filename = media_title
     
-    status["current_file"] = filename if filename is not None else ""
+    # 确保最终返回的文件名是字符串类型
+    status["current_file"] = filename if isinstance(filename, str) else ""
     app.logger.info(f"Final current_file: {status['current_file']}")
     
     # 获取音量
@@ -1034,8 +1064,10 @@ def web_control_panel():
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
-                    var hasCurrentFile = data.current_file && data.current_file.trim() !== '';
-                    document.getElementById('current-file').textContent = hasCurrentFile ? data.current_file : '无';
+                    // 确保current_file是字符串类型
+                    var currentFile = typeof data.current_file === 'string' ? data.current_file : '';
+                    var hasCurrentFile = currentFile && currentFile.trim() !== '';
+                    document.getElementById('current-file').textContent = hasCurrentFile ? currentFile : '无';
                     
                     // 根据是否有当前文件和暂停状态来正确显示播放状态
                     if (!hasCurrentFile) {
@@ -1055,6 +1087,9 @@ def web_control_panel():
                 })
                 .catch(function(error) {
                     console.error('Error updating status:', error);
+                    // 出错时也更新UI，显示错误状态
+                    document.getElementById('current-file').textContent = '无';
+                    document.getElementById('play-status').textContent = '未播放';
                 });
         }
         

@@ -260,10 +260,89 @@ def pause_toggle():
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")
 def next_track():
-    success, message = send_mpv_command(["playlist-next"])
-    if success:
-        return jsonify({"status": "ok", "action": "next_track"}), 200
-    return jsonify({"status": "error", "message": message}), 500
+    try:
+        # 获取当前播放的文件名
+        current_file, _ = get_mpv_property("filename")
+        if not current_file:
+            # 如果获取filename失败，尝试从path属性获取
+            path, _ = get_mpv_property("path")
+            if path:
+                current_file = os.path.basename(path)
+        
+        # 获取NAS上的所有音频文件列表
+        all_files, message = rclone_list_files()
+        if not all_files:
+            # 如果NAS获取失败，使用本地文件
+            all_files = get_audio_files()
+        
+        if not all_files:
+            return jsonify({"status": "error", "message": "No audio files found"}), 500
+        
+        # 找到下一首歌曲
+        next_file = None
+        if current_file and current_file in all_files:
+            # 如果当前文件在列表中，获取下一首
+            current_index = all_files.index(current_file)
+            next_index = (current_index + 1) % len(all_files)
+            next_file = all_files[next_index]
+        else:
+            # 如果当前文件不在列表中或无法获取当前文件，随机选择一首
+            import random
+            next_file = random.choice(all_files)
+        
+        # 从缓存或NAS获取文件
+        success, local_path, message = get_file_from_cache_or_nas(next_file)
+        
+        if not success:
+            return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
+        
+        # 播放下一首歌曲
+        success, message = send_mpv_command(["loadfile", local_path, "replace"])
+        if success:
+            return jsonify({
+                "status": "ok", 
+                "action": "next_track",
+                "next_file": next_file,
+                "source": "cache" if "exists in cache" in message else "NAS",
+                "local_path": local_path
+            }), 200
+        
+        # 如果loadfile失败，回退到重启MPV的方式
+        app.logger.warning("loadfile命令失败，回退到重启MPV的方式")
+        
+        # 停止当前播放
+        send_mpv_command(["quit"])
+        time.sleep(0.5)  # 等待mpv退出
+        
+        # 使用mpv播放文件
+        import subprocess
+        try:
+            # 启动mpv播放指定文件
+            subprocess.Popen([
+                "mpv", 
+                "--no-video", 
+                "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
+                "--cache=yes",
+                "--cache-secs=60",
+                "--idle=yes",  # 保持mpv运行状态
+                "--force-window=no",  # 不强制创建窗口
+                "--really-quiet",  # 减少输出噪音
+                local_path
+            ])
+            
+            return jsonify({
+                "status": "ok", 
+                "action": "next_track",
+                "next_file": next_file,
+                "source": "cache" if "exists in cache" in message else "NAS",
+                "local_path": local_path,
+                "method": "restart"
+            }), 200
+        except Exception as e:
+            return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
+    
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/prev', methods=['GET'])
 @log_operation("上一首")

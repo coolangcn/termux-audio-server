@@ -1,12 +1,23 @@
 import os
-import json
-import random
-import threading
-import time
-import logging
-from flask import Flask, request, jsonify, render_template_string
-from flask_cors import CORS
-import logging.config
+import sys
+print("Starting enhanced_mpv_api.py...")
+print(f"Python version: {sys.version}")
+
+# 导入前的检查
+print("Checking imports...")
+try:
+    import json
+    import random
+    import threading
+    import time
+    import logging
+    from flask import Flask, request, jsonify, render_template_string
+    from flask_cors import CORS
+    import logging.config
+    print("All imports successful!")
+except Exception as e:
+    print(f"Import error: {e}")
+    sys.exit(1)
 
 # 禁用Flask的默认日志记录
 log = logging.getLogger('werkzeug')
@@ -320,152 +331,291 @@ def web_control_panel():
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>音频控制面板</title>
     <style>
+        /* 音乐App风格样式 - 清爽简洁 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
         body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background-color: #f7f7f7;
+            color: #333;
+            max-width: 600px;
             margin: 0 auto;
-            padding: 20px;
-            background-color: #f0f0f0;
+            padding: 15px;
+            min-height: 100vh;
         }
+        
         .container {
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
-            border-radius: 15px;
-            padding: 25px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-            border: 1px solid rgba(255,255,255,0.2);
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
         }
+        
         h1 {
             text-align: center;
-            color: #333;
+            color: #1a1a1a;
+            font-size: 24px;
+            margin-bottom: 25px;
+            font-weight: 600;
         }
-        .controls {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 10px;
-            margin-bottom: 20px;
+        
+        /* 音乐信息卡片 */
+        .status {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 25px;
+            text-align: center;
         }
-        .control-btn {
-            padding: 18px;
-            font-size: 16px;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.3s ease;
+        
+        .status div {
+            margin: 8px 0;
             font-weight: 500;
+        }
+        
+        #current-file {
+            font-size: 18px;
+            font-weight: 600;
+            margin-top: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        #play-status {
+            font-size: 16px;
+            opacity: 0.9;
+        }
+        
+        #volume {
+            font-weight: 600;
+        }
+        
+        /* 控制按钮区域 - 音乐App风格大按钮 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .control-btn {
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
             box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         }
+        
+        .control-btn.primary {
+            background-color: #667eea;
+            color: white;
+            width: 60px;
+            height: 60px;
+            font-size: 20px;
+        }
+        
+        .control-btn.secondary {
+            background-color: #f0f0f0;
+            color: #333;
+            width: 50px;
+            height: 50px;
+            font-size: 18px;
+        }
+        
         .control-btn:hover {
-            transform: translateY(-2px);
+            transform: scale(1.05);
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         }
-        .primary {
-            background-color: #007bff;
-            color: white;
+        
+        .control-btn:active {
+            transform: scale(0.95);
         }
-        .secondary {
-            background-color: #6c757d;
-            color: white;
-        }
-        .success {
-            background-color: #28a745;
-            color: white;
-        }
-        .danger {
-            background-color: #dc3545;
-            color: white;
-        }
+        
+        /* 音量控制 */
         .volume-control {
             display: flex;
             align-items: center;
-            gap: 10px;
-            margin-bottom: 20px;
+            gap: 12px;
+            margin-bottom: 25px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 12px;
         }
+        
+        .volume-control span {
+            font-weight: 500;
+            color: #555;
+        }
+        
         .volume-control input {
             flex: 1;
-            height: 10px;
-            border-radius: 5px;
+            height: 6px;
+            border-radius: 3px;
             background: #ddd;
             outline: none;
-            transition: all 0.3s;
+            -webkit-appearance: none;
         }
+        
         .volume-control input::-webkit-slider-thumb {
-            appearance: none;
-            width: 20px;
-            height: 20px;
+            -webkit-appearance: none;
+            width: 22px;
+            height: 22px;
             border-radius: 50%;
-            background: #007bff;
+            background: #667eea;
             cursor: pointer;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
             transition: all 0.2s;
         }
+        
         .volume-control input::-webkit-slider-thumb:hover {
             transform: scale(1.2);
-            background: #0056b3;
+            background: #5a67d8;
         }
-        .file-list {
-            margin-top: 20px;
-        }
-        .file-item {
-            padding: 12px 15px;
-            border-bottom: 1px solid #e9ecef;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            border-radius: 6px;
-            margin-bottom: 5px;
-        }
-        .file-item:hover {
-            background-color: rgba(0,123,255,0.1);
-            transform: translateX(5px);
-            border-left: 4px solid #007bff;
-        }
-        .status {
-            padding: 10px;
-            background-color: #e9ecef;
-            border-radius: 5px;
-            margin-bottom: 20px;
-        }
+        
+        /* 搜索框 */
         .search-box {
-            margin-bottom: 20px;
+            margin-bottom: 25px;
+            position: relative;
         }
+        
         .search-box input {
-            width: 70%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            width: 100%;
+            padding: 15px 15px 15px 45px;
+            border: 1px solid #e0e0e0;
+            border-radius: 12px;
+            font-size: 16px;
+            transition: border-color 0.3s;
         }
+        
+        .search-box input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
         .search-box button {
-            padding: 10px 15px;
-            background-color: #007bff;
+            position: absolute;
+            right: 5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: #667eea;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
+            padding: 8px 12px;
             cursor: pointer;
+            font-size: 14px;
         }
-        .log-section {
+        
+        /* 文件列表 */
+        .file-list {
             margin-top: 30px;
         }
-        .log-section h3 {
-            margin-bottom: 10px;
+        
+        .file-list h3 {
+            font-size: 18px;
+            margin-bottom: 15px;
+            color: #1a1a1a;
         }
-        .log-buttons {
-            margin-bottom: 10px;
-        }
-        .log-btn {
-            padding: 8px 12px;
-            margin-right: 10px;
-            border: none;
-            border-radius: 4px;
+        
+        .file-item {
+            padding: 15px;
+            border-bottom: 1px solid #f0f0f0;
             cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
         }
+        
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-item:hover {
+            background-color: #f9f9f9;
+            padding-left: 20px;
+        }
+        
+        /* 日志区域 - 简化显示 */
+        .log-section {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 12px;
+        }
+        
+        .log-section h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #555;
+        }
+        
+        .log-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .log-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+        }
+        
+        .log-btn.primary {
+            background-color: #667eea;
+            color: white;
+        }
+        
+        .log-btn.danger {
+            background-color: #ff6b6b;
+            color: white;
+        }
+        
         .log-container {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            border-radius: 4px;
+            background: white;
+            border-radius: 8px;
             padding: 10px;
-            height: 200px;
+            height: 150px;
             overflow-y: auto;
             font-family: monospace;
             font-size: 12px;
+            border: 1px solid #e0e0e0;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 480px) {
+            body {
+                padding: 10px;
+            }
+            
+            .container {
+                padding: 15px;
+            }
+            
+            .control-btn.primary {
+                width: 50px;
+                height: 50px;
+                font-size: 18px;
+            }
+            
+            .control-btn.secondary {
+                width: 40px;
+                height: 40px;
+                font-size: 16px;
+            }
         }
     </style>
 </head>
@@ -474,15 +624,16 @@ def web_control_panel():
         <h1>🎵 音频控制面板</h1>
         
         <div class="status" id="status">
-            <div>当前播放: <span id="current-file">未知</span></div>
-            <div>播放状态: <span id="play-status">未知</span></div>
+            <div>🎵 当前播放</div>
+            <div id="current-file">无</div>
+            <div>播放状态: <span id="play-status">未播放</span></div>
             <div>音量: <span id="volume">0</span>%</div>
         </div>
         
         <div class="controls">
-            <button class="control-btn primary" onclick="pauseToggle()">⏯️ 播放/暂停</button>
-            <button class="control-btn primary" onclick="nextTrack()">⏭️ 下一首</button>
-            <button class="control-btn primary" onclick="prevTrack()">⏮️ 上一首</button>
+            <button class="control-btn secondary" onclick="prevTrack()">⏮️</button>
+            <button class="control-btn primary" onclick="pauseToggle()">⏯️</button>
+            <button class="control-btn secondary" onclick="nextTrack()">⏭️</button>
         </div>
         
         <div class="volume-control">
@@ -519,15 +670,26 @@ def web_control_panel():
         // 更新状态信息
         function updateStatus() {
             fetch('/mpv/status')
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('current-file').textContent = data.current_file || '无';
-                    document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
-                    document.getElementById('volume').textContent = Math.round(data.volume) || 0;
-                    document.getElementById('volume-slider').value = Math.round(data.volume) || 0;
-                    document.getElementById('volume-value').textContent = Math.round(data.volume) || 0;
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
+                    var hasCurrentFile = data.current_file && data.current_file.trim() !== '';
+                    document.getElementById('current-file').textContent = hasCurrentFile ? data.current_file : '无';
+                    
+                    // 根据是否有当前文件和暂停状态来正确显示播放状态
+                    if (!hasCurrentFile) {
+                        document.getElementById('play-status').textContent = '未播放';
+                    } else {
+                        document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
+                    }
+                    
+                    // 修复音量显示问题
+                    var volumeValue = Math.round(data.volume) || 0;
+                    document.getElementById('volume').textContent = volumeValue;
+                    document.getElementById('volume-slider').value = volumeValue;
+                    document.getElementById('volume-value').textContent = volumeValue;
                 })
-                .catch(error => {
+                .catch(function(error) {
                     console.error('Error updating status:', error);
                 });
         }
@@ -620,19 +782,22 @@ def web_control_panel():
         }
         
         function adjustVolume(value) {
-            // 立即更新UI
+            // 立即更新所有音量显示元素，确保即时反馈
+            document.getElementById('volume').textContent = value;
             document.getElementById('volume-value').textContent = value;
+            document.getElementById('volume-slider').value = value;
             
             // 发送API请求设置音量
-            fetch(`/mpv/volume/set?value=${value}`)
-                .then(response => response.json())
-                .then(data => {
+            fetch('/mpv/volume/set?value=' + value)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
                     console.log('音量设置成功:', data);
-                    // 强制更新状态以确保同步
-                    setTimeout(updateStatus, 100);
+                    // 不立即调用updateStatus，避免覆盖用户正在调节的音量
+                    // 让定时更新来同步真实状态
                 })
-                .catch(error => {
+                .catch(function(error) {
                     console.error('音量设置失败:', error);
+                    // 出错时仍然保持UI更新，因为用户可能已经调整了滑块
                 });
         }
         
@@ -678,9 +843,17 @@ def web_control_panel():
         
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
+            // 立即初始化状态显示
+            document.getElementById('current-file').textContent = '无';
+            document.getElementById('play-status').textContent = '未播放';
+            document.getElementById('volume').textContent = '0';
+            document.getElementById('volume-slider').value = '50';
+            document.getElementById('volume-value').textContent = '50';
+            
+            // 加载数据
             updateStatus();
             getAllFiles();
-            loadLogs(); // 加载日志
+            loadLogs();
             
             // 每5秒更新一次状态
             setInterval(updateStatus, 5000);
@@ -689,7 +862,7 @@ def web_control_panel():
             
             // 搜索框回车事件
             document.getElementById('search-input').addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
+                if (e.keyCode === 13) { // 使用keyCode兼容性更好
                     searchFiles();
                 }
             });

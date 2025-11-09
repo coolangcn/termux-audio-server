@@ -111,7 +111,7 @@ def get_audio_files():
     if not os.path.exists(LOCAL_DIR):
         return []
     
-    audio_extensions = ('.mp3', '.flac', '.ogg', '.aac', '.m4a', '.wav', '.mp4')
+    audio_extensions = ('.mp3', '.flac', '.ogg', '.aac', '.m4a', '.wav', '.mp4', '.webm')
     files = []
     for file in os.listdir(LOCAL_DIR):
         if file.lower().endswith(audio_extensions):
@@ -123,7 +123,7 @@ def rclone_sync():
     try:
         # 这里需要根据实际的rclone配置调整
         rclone_remote = "synology:download/bilibili/push"
-        includes = "--include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav'"
+        includes = "--include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
         
         cmd = f"rclone copy '{rclone_remote}' '{LOCAL_DIR}' {includes} -P"
         result = os.system(cmd)
@@ -141,7 +141,7 @@ def rclone_list_files():
         rclone_remote = "synology:download/bilibili/push"
         
         # 使用rclone lsjson获取文件列表
-        cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav'"
+        cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
         
         import subprocess
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -736,6 +736,14 @@ def web_control_panel():
             font-size: 18px;
             margin-bottom: 15px;
             color: #1a1a1a;
+        }
+        
+        #file-list {
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
         }
         
         .file-item {

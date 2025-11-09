@@ -1291,6 +1291,58 @@ def web_control_panel():
             }
         }
         
+        // 自动播放下一首功能
+        let autoPlayInterval;
+        let lastFileCount = 0;
+        
+        function checkAndAutoPlayNext() {
+            // 获取当前播放状态
+            fetch('/mpv/status')
+                .then(response => response.json())
+                .then(data => {
+                    // 检查是否播放结束（当前文件为空且之前有文件在播放）
+                    if (!data.current_file && data.position === 0 && data.duration === 0) {
+                        // 获取文件列表
+                        fetch('/files')
+                            .then(response => response.json())
+                            .then(fileData => {
+                                if (fileData.files && fileData.files.length > 0) {
+                                    // 随机选择下一首歌曲
+                                    const randomIndex = Math.floor(Math.random() * fileData.files.length);
+                                    const nextFile = fileData.files[randomIndex];
+                                    console.log('自动播放下一首:', nextFile);
+                                    playFileByName(nextFile);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('获取文件列表失败:', error);
+                            });
+                    }
+                })
+                .catch(error => {
+                    console.error('获取播放状态失败:', error);
+                });
+        }
+        
+        // 定时更新文件列表功能
+        function checkAndUpdateFileList() {
+            fetch('/files')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.files && data.files.length !== lastFileCount) {
+                        console.log('检测到文件列表变化，从', lastFileCount, '更新到', data.files.length);
+                        lastFileCount = data.files.length;
+                        updateFileList(data.files);
+                        
+                        // 显示更新通知
+                        showNotification(`文件列表已更新，共 ${data.files.length} 首歌曲`);
+                    }
+                })
+                .catch(error => {
+                    console.error('更新文件列表失败:', error);
+                });
+        }
+        
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             // 立即初始化状态显示
@@ -1312,6 +1364,11 @@ def web_control_panel():
             setInterval(loadLogs, 10000);
             // 每30秒更新一次缓存信息
             setInterval(getCacheInfo, 30000);
+            
+            // 每3秒检查一次是否需要自动播放下一首
+            setInterval(checkAndAutoPlayNext, 3000);
+            // 每15秒检查一次文件列表是否有更新
+            setInterval(checkAndUpdateFileList, 15000);
             
             // 搜索框回车事件
             document.getElementById('search-input').addEventListener('keypress', function(e) {

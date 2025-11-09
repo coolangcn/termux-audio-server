@@ -754,6 +754,134 @@ def clear_logs():
         print(f"清空日志时发生错误: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/mcp/control', methods=['POST'])
+@log_operation("MCP接口控制")
+def mcp_control():
+    """
+    提供MCP能力接口供小智AI使用
+    
+    请求格式:
+    {
+        "action": "play|pause|next|prev|stop|volume",
+        "params": {
+            "value": 音量值 (仅volume操作需要)
+        }
+    }
+    
+    返回格式:
+    {
+        "status": "ok|error",
+        "message": "操作结果描述",
+        "data": {
+            "action": "执行的操作",
+            "current_status": {
+                "playing": true|false,
+                "filename": "当前播放文件名",
+                "volume": 音量值
+            }
+        }
+    }
+    """
+    try:
+        data = request.json
+        if not data or "action" not in data:
+            return jsonify({
+                "status": "error",
+                "message": "Missing required field 'action'",
+                "data": {}
+            }), 400
+        
+        action = data["action"]
+        params = data.get("params", {})
+        
+        # 执行相应的操作
+        if action == "play":
+            # 获取当前状态，如果已暂停则取消暂停，否则检查是否有正在播放的文件
+            paused, _ = get_mpv_property("pause")
+            if paused:
+                # 如果当前是暂停状态，取消暂停
+                success, message = send_mpv_command(["set_property", "pause", "no"])
+            else:
+                # 检查是否有正在播放的文件
+                filename, _ = get_mpv_property("filename")
+                if not filename:
+                    # 如果没有正在播放的文件，尝试播放下一首
+                    next_track_result = next_track()
+                    return next_track_result
+                success, message = True, "Already playing"
+                
+        elif action == "pause":
+            success, message = send_mpv_command(["set_property", "pause", "yes"])
+            
+        elif action == "next":
+            return next_track()
+            
+        elif action == "prev":
+            return prev_track()
+            
+        elif action == "stop":
+            success, message = send_mpv_command(["quit"])
+            
+        elif action == "volume":
+            value = params.get("value", 0)
+            try:
+                value = int(value)
+                success, message = send_mpv_command(["add", "volume", str(value)])
+            except (ValueError, TypeError):
+                return jsonify({
+                    "status": "error",
+                    "message": "Volume value must be an integer",
+                    "data": {}
+                }), 400
+                
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Unknown action: {action}",
+                "data": {}
+            }), 400
+        
+        # 获取当前状态信息
+        current_status = {}
+        paused, _ = get_mpv_property("pause")
+        current_status["playing"] = not paused if paused is not None else False
+        
+        filename, _ = get_mpv_property("filename")
+        if not filename:
+            path, _ = get_mpv_property("path")
+            if path:
+                filename = os.path.basename(path)
+        current_status["filename"] = filename or "No file playing"
+        
+        volume, _ = get_mpv_property("volume")
+        current_status["volume"] = float(volume) if volume is not None else 100.0
+        
+        if success:
+            return jsonify({
+                "status": "ok",
+                "message": f"Action '{action}' executed successfully",
+                "data": {
+                    "action": action,
+                    "current_status": current_status
+                }
+            }), 200
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Failed to execute action: {message}",
+                "data": {
+                    "action": action,
+                    "current_status": current_status
+                }
+            }), 500
+            
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Internal server error: {str(e)}",
+            "data": {}
+        }), 500
+
 @app.route('/cache/info', methods=['GET'])
 def get_cache_info():
     """获取缓存信息"""

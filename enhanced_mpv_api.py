@@ -1732,23 +1732,37 @@ def web_control_panel():
                     const hasCurrentFile = data.current_file && data.current_file.trim() !== '';
                     const currentIsPlaying = hasCurrentFile && !data.paused;
                     
-                    // 检测播放结束：从有文件播放到无文件，且上一首是播放状态
-                    if (!hasCurrentFile && lastCurrentFile && isPlaying) {
-                        console.log('检测到播放结束，上一首:', lastCurrentFile);
-                        // 获取文件列表
-                        fetch('/files')
+                    // 检测播放结束的两种方式：
+                    // 1. 播放位置接近文件末尾（相差不到1秒）
+                    // 2. 从有文件播放到无文件，且上一首是播放状态
+                    const isNearEndOfPlayback = hasCurrentFile && data.position > 0 && 
+                                              data.duration > 0 && 
+                                              (data.duration - data.position) < 1.0; // 小于1秒时认为即将结束
+                    
+                    const isFileEnded = !hasCurrentFile && lastCurrentFile && isPlaying;
+                    
+                    if (isNearEndOfPlayback || isFileEnded) {
+                        console.log('检测到播放结束或接近结束，当前状态:', {
+                            isNearEndOfPlayback,
+                            isFileEnded,
+                            currentFile: lastCurrentFile,
+                            position: data.position,
+                            duration: data.duration
+                        });
+                        
+                        // 直接调用后端的next_track API，与手动点击下一首按钮保持一致
+                        fetch('/mpv/next')
                             .then(response => response.json())
-                            .then(fileData => {
-                                if (fileData.files && fileData.files.length > 0) {
-                                    // 随机选择下一首歌曲
-                                    const randomIndex = Math.floor(Math.random() * fileData.files.length);
-                                    const nextFile = fileData.files[randomIndex];
-                                    console.log('自动播放下一首:', nextFile);
-                                    playFileByName(nextFile);
+                            .then(nextData => {
+                                if (nextData.status === 'ok') {
+                                    console.log('自动播放下一首成功:', nextData.next_file);
+                                    showNotification(`自动播放下一首: ${nextData.next_file}`);
+                                } else {
+                                    console.error('自动播放下一首失败:', nextData.message);
                                 }
                             })
                             .catch(error => {
-                                console.error('获取文件列表失败:', error);
+                                console.error('自动播放下一首请求失败:', error);
                             });
                     }
                     

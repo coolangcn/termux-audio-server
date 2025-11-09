@@ -85,6 +85,7 @@ def send_mpv_command(command):
 def get_mpv_property(property_name):
     """获取MPV属性值"""
     if not os.path.exists(MPV_SOCKET_PATH):
+        app.logger.warning(f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?")
         return None, f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
 
     json_command = json.dumps({"command": ["get_property", property_name]})
@@ -99,11 +100,27 @@ def get_mpv_property(property_name):
             capture_output=True
         )
         if result.returncode == 0:
-            response = json.loads(result.stdout.strip())
-            if 'data' in response:
-                return response['data'], "Success"
-        return None, "Failed to get property"
+            response_text = result.stdout.strip()
+            if response_text:
+                try:
+                    response = json.loads(response_text)
+                    if 'data' in response:
+                        app.logger.info(f"Successfully got property {property_name}: {response['data']}")
+                        return response['data'], "Success"
+                    elif 'error' in response:
+                        app.logger.warning(f"MPV property error for {property_name}: {response['error']}")
+                        return None, f"MPV error: {response['error']}"
+                except json.JSONDecodeError:
+                    app.logger.error(f"Failed to parse MPV response: {response_text}")
+                    return None, "Failed to parse MPV response"
+            else:
+                app.logger.warning(f"Empty response from MPV for property {property_name}")
+                return None, "Empty response from MPV"
+        else:
+            app.logger.warning(f"Failed to get property {property_name}, return code: {result.returncode}, stderr: {result.stderr}")
+            return None, f"Command failed with return code {result.returncode}"
     except Exception as e:
+        app.logger.error(f"Exception getting MPV property {property_name}: {str(e)}")
         return None, str(e)
 
 def get_audio_files():
@@ -316,6 +333,9 @@ def play_file(filename):
             "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
             "--cache=yes",
             "--cache-secs=60",
+            "--idle=yes",  # 保持mpv运行状态
+            "--force-window=no",  # 不强制创建窗口
+            "--really-quiet",  # 减少输出噪音
             local_path
         ])
         
@@ -334,13 +354,35 @@ def get_status():
     """获取播放状态"""
     status = {}
     
-    # 获取播放状态
-    pause_state, _ = get_mpv_property("pause")
-    status["paused"] = pause_state if pause_state is not None else False
+    app.logger.info("Getting MPV status...")
     
-    # 获取当前播放文件
-    filename, _ = get_mpv_property("filename")
+    # 获取播放状态
+    pause_state, pause_msg = get_mpv_property("pause")
+    status["paused"] = pause_state if pause_state is not None else False
+    if pause_state is None:
+        app.logger.warning(f"Failed to get pause state: {pause_msg}")
+    
+    # 获取当前播放文件 - 尝试多种属性
+    filename, filename_msg = get_mpv_property("filename")
+    app.logger.info(f"Got filename property: {filename}, message: {filename_msg}")
+    
+    if not filename:  # 如果filename为空，尝试获取path属性
+        path, path_msg = get_mpv_property("path")
+        app.logger.info(f"Got path property: {path}, message: {path_msg}")
+        if path:
+            # 从路径中提取文件名
+            filename = os.path.basename(path)
+            app.logger.info(f"Extracted filename from path: {filename}")
+    
+    # 如果还是没有，尝试media-title
+    if not filename:
+        media_title, media_msg = get_mpv_property("media-title")
+        app.logger.info(f"Got media-title property: {media_title}, message: {media_msg}")
+        if media_title:
+            filename = media_title
+    
     status["current_file"] = filename if filename is not None else ""
+    app.logger.info(f"Final current_file: {status['current_file']}")
     
     # 获取音量
     volume, _ = get_mpv_property("volume")
@@ -356,6 +398,7 @@ def get_status():
     status["position"] = position if position is not None else 0
     status["duration"] = duration if duration is not None else 0
     
+    app.logger.info(f"Complete status: {status}")
     return jsonify(status), 200
 
 @app.route('/files', methods=['GET'])

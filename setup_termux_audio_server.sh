@@ -55,6 +55,24 @@ cp termux-audio-server-temp/enhanced_mpv_api.py ~/enhanced_mpv_api.py
 chmod +x ~/enhanced_mpv_api.py
 rm -rf termux-audio-server-temp
 
+# 获取版本信息
+echo "🔍 获取版本信息..."
+cd ~/termux-audio-server
+if [ -d ".git" ]; then
+    # 获取当前最新commit信息
+    VERSION_INFO=$(git log -1 --pretty=format:"Commit: %H%nAuthor: %an (%ae)%nDate: %ad%nMessage: %s")
+    COMMIT_HASH=$(git rev-parse HEAD)
+    COMMIT_TIME=$(git show -s --format=%ci HEAD)
+    BRANCH_INFO=$(git branch --show-current)
+    echo "✅ 版本信息获取成功"
+else
+    VERSION_INFO="Unknown - Not a git repository"
+    COMMIT_HASH="Unknown"
+    COMMIT_TIME="Unknown"
+    BRANCH_INFO="Unknown"
+    echo "⚠️  无法获取版本信息 - 非git仓库"
+fi
+
 # 设置执行权限
 echo "🔧 设置执行权限..."
 chmod +x ~/termux-audio-server/*.sh
@@ -143,6 +161,15 @@ chmod +x ~/termux-audio-server/install_as_service.sh
 
 echo ""
 echo "🎉 部署完成!"
+echo "========================"
+echo "📋 版本信息:"
+echo "  提交哈希: $COMMIT_HASH"
+echo "  修改时间: $COMMIT_TIME"
+echo "  分支: $BRANCH_INFO"
+echo ""
+echo "📄 完整版本信息:"
+echo "$VERSION_INFO"
+echo ""
 echo "========================"
 echo "已安装的组件:"
 echo "  - Python Flask API服务器"

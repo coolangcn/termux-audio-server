@@ -1,4 +1,8 @@
 import os
+
+# 音频渐入效果配置
+AUDIO_FADE_IN_ENABLED = True  # 启用音频渐入效果
+AUDIO_FADE_IN_DURATION = 1     # 渐入持续时间（秒）
 import sys
 print("Starting enhanced_mpv_api.py...")
 print(f"Python version: {sys.version}")
@@ -296,6 +300,15 @@ def next_track():
         if not success:
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
+        # 如果启用了音频渐入效果，先设置音频滤镜
+        if AUDIO_FADE_IN_ENABLED:
+            fade_command = ["af-add", f"lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]"]
+            fade_success, fade_message = send_mpv_command(fade_command)
+            if fade_success:
+                app.logger.info(f"已设置音频渐入效果，持续{AUDIO_FADE_IN_DURATION}秒")
+            else:
+                app.logger.warning(f"设置音频渐入效果失败: {fade_message}")
+        
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
@@ -304,7 +317,9 @@ def next_track():
                 "action": "next_track",
                 "next_file": next_file,
                 "source": "cache" if "exists in cache" in message else "NAS",
-                "local_path": local_path
+                "local_path": local_path,
+                "fade_in_enabled": AUDIO_FADE_IN_ENABLED,
+                "fade_in_duration": AUDIO_FADE_IN_DURATION if AUDIO_FADE_IN_ENABLED else 0
             }), 200
         
         # 如果loadfile失败，回退到重启MPV的方式
@@ -318,7 +333,7 @@ def next_track():
         import subprocess
         try:
             # 启动mpv播放指定文件
-            subprocess.Popen([
+            mpv_command = [
                 "mpv", 
                 "--no-video", 
                 "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
@@ -327,8 +342,14 @@ def next_track():
                 "--idle=yes",  # 保持mpv运行状态
                 "--force-window=no",  # 不强制创建窗口
                 "--really-quiet",  # 减少输出噪音
-                local_path
-            ])
+            ]
+            
+            # 根据配置添加音频渐入效果
+            if AUDIO_FADE_IN_ENABLED:
+                mpv_command.append(f"--af=lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]")
+            
+            mpv_command.append(local_path)
+            subprocess.Popen(mpv_command)
             
             return jsonify({
                 "status": "ok", 
@@ -383,6 +404,15 @@ def prev_track():
         if not success:
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
+        # 如果启用了音频渐入效果，先设置音频滤镜
+        if AUDIO_FADE_IN_ENABLED:
+            fade_command = ["af-add", f"lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]"]
+            fade_success, fade_message = send_mpv_command(fade_command)
+            if fade_success:
+                app.logger.info(f"已设置音频渐入效果，持续{AUDIO_FADE_IN_DURATION}秒")
+            else:
+                app.logger.warning(f"设置音频渐入效果失败: {fade_message}")
+        
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
@@ -391,7 +421,9 @@ def prev_track():
                 "action": "prev_track",
                 "prev_file": prev_file,
                 "source": "cache" if "exists in cache" in message else "NAS",
-                "local_path": local_path
+                "local_path": local_path,
+                "fade_in_enabled": AUDIO_FADE_IN_ENABLED,
+                "fade_in_duration": AUDIO_FADE_IN_DURATION if AUDIO_FADE_IN_ENABLED else 0
             }), 200
         
         # 如果loadfile失败，回退到重启MPV的方式
@@ -405,7 +437,7 @@ def prev_track():
         import subprocess
         try:
             # 启动mpv播放指定文件
-            subprocess.Popen([
+            mpv_command = [
                 "mpv", 
                 "--no-video", 
                 "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
@@ -414,8 +446,14 @@ def prev_track():
                 "--idle=yes",  # 保持mpv运行状态
                 "--force-window=no",  # 不强制创建窗口
                 "--really-quiet",  # 减少输出噪音
-                local_path
-            ])
+            ]
+            
+            # 根据配置添加音频渐入效果
+            if AUDIO_FADE_IN_ENABLED:
+                mpv_command.append(f"--af=lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]")
+            
+            mpv_command.append(local_path)
+            subprocess.Popen(mpv_command)
             
             return jsonify({
                 "status": "ok", 
@@ -503,16 +541,62 @@ def play_file(filename):
         return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
     
     # 首先尝试将文件添加到播放列表并播放
+    
+    # 先清除音频滤镜，确保不会有残留的效果
+    send_mpv_command(["af-remove", "all"])
+    
+    # 如果启用了音频渐入效果，设置音频滤镜
+    if AUDIO_FADE_IN_ENABLED:
+        fade_command = ["af-add", f"lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]"]
+        fade_success, fade_message = send_mpv_command(fade_command)
+        if fade_success:
+            app.logger.info(f"已设置音频渐入效果，持续{AUDIO_FADE_IN_DURATION}秒")
+        else:
+            app.logger.warning(f"设置音频渐入效果失败: {fade_message}")
+    
+    # 发送播放命令
     success, message = send_mpv_command(["loadfile", local_path, "replace"])
-    if success:
+    
+    # 添加短暂延迟，确保MPV有时间处理播放命令
+    time.sleep(0.3)
+    
+    # 检查是否成功开始播放
+    current_filename, _ = get_mpv_property("filename")
+    if not current_filename:
+        path, _ = get_mpv_property("path")
+        if path:
+            current_filename = os.path.basename(path)
+    
+    play_success = success and current_filename and os.path.basename(local_path).startswith(os.path.basename(current_filename))
+    
+    if play_success:
+        app.logger.info(f"成功开始播放文件: {filename}, 当前播放: {current_filename}")
         return jsonify({
             "status": "ok", 
             "action": "play_file", 
             "file": filename,
             "local_path": local_path,
             "source": "NAS" if "copied from NAS" in message else "cache",
-            "method": "loadfile"
+            "method": "loadfile",
+            "fade_in_enabled": AUDIO_FADE_IN_ENABLED,
+            "fade_in_duration": AUDIO_FADE_IN_DURATION if AUDIO_FADE_IN_ENABLED else 0,
+            "current_filename": current_filename
         }), 200
+    else:
+        app.logger.warning(f"播放文件可能失败，命令返回: {success}, 当前播放: {current_filename}")
+        # 即使状态检查失败，如果命令发送成功，仍返回成功响应，但添加警告信息
+        if success:
+            return jsonify({
+                "status": "ok", 
+                "action": "play_file", 
+                "file": filename,
+                "local_path": local_path,
+                "source": "NAS" if "copied from NAS" in message else "cache",
+                "method": "loadfile",
+                "fade_in_enabled": AUDIO_FADE_IN_ENABLED,
+                "fade_in_duration": AUDIO_FADE_IN_DURATION if AUDIO_FADE_IN_ENABLED else 0,
+                "warning": "文件已发送到播放器，但可能尚未开始播放"
+            }), 200
     
     # 如果loadfile失败，回退到重启MPV的方式
     app.logger.warning("loadfile命令失败，回退到重启MPV的方式")
@@ -525,7 +609,7 @@ def play_file(filename):
     import subprocess
     try:
         # 启动mpv播放指定文件
-        subprocess.Popen([
+        mpv_command = [
             "mpv", 
             "--no-video", 
             "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
@@ -534,8 +618,14 @@ def play_file(filename):
             "--idle=yes",  # 保持mpv运行状态
             "--force-window=no",  # 不强制创建窗口
             "--really-quiet",  # 减少输出噪音
-            local_path
-        ])
+        ]
+        
+        # 根据配置添加音频渐入效果
+        if AUDIO_FADE_IN_ENABLED:
+            mpv_command.append(f"--af=lavfi=[volume=fade=t=in:st=0:d={AUDIO_FADE_IN_DURATION}]")
+        
+        mpv_command.append(local_path)
+        subprocess.Popen(mpv_command)
         
         return jsonify({
             "status": "ok", 
@@ -595,34 +685,64 @@ def get_status():
     
     app.logger.info("Getting MPV status...")
     
+    # 首先检查MPV是否正在运行 - 发送一个简单的命令来测试连接
+    test_success, test_msg = send_mpv_command(["get_time_pos"])
+    if not test_success:
+        # 如果连接失败，记录错误并返回一个明确的状态
+        app.logger.error(f"Failed to connect to MPV: {test_msg}")
+        status = {
+            "current_file": "",
+            "paused": False,
+            "volume": 0,
+            "playlist": [],
+            "position": 0,
+            "duration": 0,
+            "error": "MPV播放器未运行或连接失败"
+        }
+        return jsonify(status), 200
+    
     # 获取播放状态
     pause_state, pause_msg = get_mpv_property("pause")
     status["paused"] = pause_state if pause_state is not None else False
     if pause_state is None:
         app.logger.warning(f"Failed to get pause state: {pause_msg}")
     
-    # 获取当前播放文件 - 尝试多种属性
-    filename, filename_msg = get_mpv_property("filename")
-    app.logger.info(f"Got filename property: {filename}, message: {filename_msg}")
+    # 获取当前播放文件 - 尝试多种属性，优先使用media-title（通常更友好）
+    filename = ""
     
-    # 确保filename是字符串类型
-    if filename is None:
-        filename = ""
+    # 尝试获取media-title属性
+    media_title, media_msg = get_mpv_property("media-title")
+    app.logger.info(f"Got media-title property: {media_title}, message: {media_msg}")
+    if media_title:
+        filename = str(media_title)
     
-    if not filename:  # 如果filename为空，尝试获取path属性
+    # 如果media-title为空，尝试获取path属性
+    if not filename:
         path, path_msg = get_mpv_property("path")
         app.logger.info(f"Got path property: {path}, message: {path_msg}")
         if path:
             # 从路径中提取文件名
-            filename = os.path.basename(path)
-            app.logger.info(f"Extracted filename from path: {filename}")
+            try:
+                filename = os.path.basename(str(path))
+                app.logger.info(f"Extracted filename from path: {filename}")
+            except:
+                filename = ""
     
-    # 如果还是没有，尝试media-title
+    # 如果还是没有，尝试filename属性
     if not filename:
-        media_title, media_msg = get_mpv_property("media-title")
-        app.logger.info(f"Got media-title property: {media_title}, message: {media_msg}")
-        if media_title:
-            filename = media_title
+        filename_prop, filename_msg = get_mpv_property("filename")
+        app.logger.info(f"Got filename property: {filename_prop}, message: {filename_msg}")
+        if filename_prop:
+            filename = str(filename_prop)
+    
+    # 最后，检查播放位置和持续时间，如果有值但没有文件名，尝试一个特殊处理
+    if not filename:
+        position, _ = get_mpv_property("time-pos")
+        duration, _ = get_mpv_property("duration")
+        # 如果有有效的时间位置和持续时间，可能正在播放但我们无法获取文件名
+        if position is not None and duration is not None and position >= 0 and duration > 0:
+            app.logger.info("Detected playback with time data but no filename")
+            filename = "正在播放"
     
     # 确保最终返回的文件名是字符串类型
     status["current_file"] = filename if isinstance(filename, str) else ""
@@ -641,6 +761,11 @@ def get_status():
     duration, _ = get_mpv_property("duration")
     status["position"] = position if position is not None else 0
     status["duration"] = duration if duration is not None else 0
+    
+    # 添加一个额外的字段表示MPV是否正在播放（基于时间位置和持续时间）
+    status["is_playing"] = False
+    if position is not None and duration is not None and position >= 0 and duration > 0:
+        status["is_playing"] = True
     
     app.logger.info(f"Complete status: {status}")
     return jsonify(status), 200
@@ -1344,22 +1469,41 @@ def web_control_panel():
     </div>
 
     <script>
+        // 音量更新延迟时间（毫秒）
+        const VOLUME_UPDATE_DELAY = 3000;
+        let lastVolumeSetTime = 0;
+        
         // 更新状态信息
         function updateStatus() {
             fetch('/mpv/status')
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
-                    // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
+                    console.log('获取到的状态数据:', data);
+                    
                     // 确保current_file是字符串类型
                     var currentFile = typeof data.current_file === 'string' ? data.current_file : '';
                     var hasCurrentFile = currentFile && currentFile.trim() !== '';
-                    document.getElementById('current-file').textContent = hasCurrentFile ? currentFile : '无';
                     
-                    // 根据是否有当前文件和暂停状态来正确显示播放状态
-                    if (!hasCurrentFile) {
-                        document.getElementById('play-status').textContent = '未播放';
+                    // 利用后端返回的is_playing字段进行更准确的状态判断
+                    var isActuallyPlaying = data.is_playing === true;
+                    
+                    // 如果有播放但没有文件名，显示"正在播放"作为文件名
+                    if (!hasCurrentFile && isActuallyPlaying) {
+                        document.getElementById('current-file').textContent = '正在播放';
                     } else {
+                        document.getElementById('current-file').textContent = hasCurrentFile ? currentFile : '无';
+                    }
+                    
+                    // 根据播放状态来正确显示播放状态文本
+                    if (data.error) {
+                        // 如果有错误信息，显示错误
+                        document.getElementById('play-status').textContent = '播放器错误';
+                    } else if (isActuallyPlaying) {
+                        // 如果正在播放，显示播放或暂停状态
                         document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
+                    } else {
+                        // 否则显示未播放
+                        document.getElementById('play-status').textContent = '未播放';
                     }
                     
                     // 修复音量显示问题：如果用户最近3秒内设置了音量，则不覆盖用户设置
@@ -1370,12 +1514,18 @@ def web_control_panel():
                         document.getElementById('volume-slider').value = volumeValue;
                         document.getElementById('volume-value').textContent = volumeValue;
                     }
+                    
+                    // 如果有错误信息，显示提示
+                    if (data.error) {
+                        showNotification('⚠️ ' + data.error, true);
+                    }
                 })
                 .catch(function(error) {
                     console.error('Error updating status:', error);
                     // 出错时也更新UI，显示错误状态
                     document.getElementById('current-file').textContent = '无';
                     document.getElementById('play-status').textContent = '未播放';
+                    showNotification('⚠️ 无法获取播放状态，请检查播放器', true);
                 });
         }
         

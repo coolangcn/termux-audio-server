@@ -8,8 +8,9 @@ MPV_SOCKET_PATH="/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
 
 # --idle: 即使列表播完也保持进程存活，继续监听 IPC
 # --loop=inf: 循环播放列表
+# 添加音频渐入效果，持续1秒
 # 移除了随机播放参数
-MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf"
+MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf --af=lavfi=[volume=fade=t=in:st=0:d=1]"
 
 # 使用增强版API脚本
 API_SCRIPT=~/termux-audio-server/enhanced_mpv_api.py

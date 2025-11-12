@@ -19,9 +19,18 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# 禁用Flask的默认日志记录
+# 配置控制台实时日志记录
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
+# 保留Flask的默认日志，但调整级别
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+log.setLevel(logging.INFO)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -44,6 +53,12 @@ os.makedirs(LOG_DIR, exist_ok=True)
 operation_logger = logging.getLogger('operations')
 operation_logger.setLevel(logging.INFO)
 
+# 添加控制台处理器，用于实时输出
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION] - %(message)s'))
+operation_logger.addHandler(console_handler)
+
 # 创建文件处理器
 file_handler = logging.FileHandler(f"{LOG_DIR}/operations.log")
 file_handler.setLevel(logging.INFO)
@@ -60,7 +75,9 @@ operation_logger.propagate = False  # 防止日志传播到父记录器
 def log_operation(operation):
     def decorator(f):
         def wrapper(*args, **kwargs):
-            operation_logger.info(f"用户执行操作: {operation}")
+            log_message = f"用户执行操作: {operation}"
+            operation_logger.info(log_message)
+            print(f"[实时日志] {log_message}")
             return f(*args, **kwargs)
         wrapper.__name__ = f.__name__
         return wrapper
@@ -589,6 +606,7 @@ def build_playlist():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/status', methods=['GET'])
+@log_operation("获取播放状态")
 def get_status():
     """获取播放状态"""
     status = {}
@@ -646,6 +664,7 @@ def get_status():
     return jsonify(status), 200
 
 @app.route('/files', methods=['GET'])
+@log_operation("列出文件列表")
 def list_files():
     """列出所有音频文件（从NAS获取列表）"""
     files, message = rclone_list_files()
@@ -657,6 +676,7 @@ def list_files():
         return jsonify({"files": local_files, "warning": f"Failed to get files from NAS: {message}"}), 200
 
 @app.route('/files/search', methods=['GET'])
+@log_operation("搜索文件")
 def search_files():
     """搜索音频文件（从NAS获取列表）"""
     query = request.args.get('q', '').lower()
@@ -685,6 +705,7 @@ def sync_files():
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/logs', methods=['GET'])
+@log_operation("获取操作日志")
 def get_logs():
     """获取操作日志"""
     try:
@@ -883,7 +904,8 @@ def mcp_control():
         }), 500
 
 @app.route('/cache/info', methods=['GET'])
-def get_cache_info():
+@log_operation("获取缓存信息")
+def cache_info():
     """获取缓存信息"""
     try:
         if not os.path.exists(LOCAL_DIR):
@@ -947,6 +969,7 @@ def clear_cache():
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
+@log_operation("访问网页控制面板")
 def web_control_panel():
     """网页控制面板"""
     html_template = """
@@ -1349,6 +1372,8 @@ def web_control_panel():
             fetch('/mpv/status')
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
+                    console.log('Status data received:', data);
+                    
                     // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
                     // 确保current_file是字符串类型
                     var currentFile = typeof data.current_file === 'string' ? data.current_file : '';
@@ -1362,20 +1387,22 @@ def web_control_panel():
                         document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
                     }
                     
-                    // 修复音量显示问题：如果用户最近3秒内设置了音量，则不覆盖用户设置
-                    var currentTime = Date.now();
-                    if (currentTime - lastVolumeSetTime > VOLUME_UPDATE_DELAY) {
-                        var volumeValue = Math.round(data.volume) || 0;
-                        document.getElementById('volume').textContent = volumeValue;
-                        document.getElementById('volume-slider').value = volumeValue;
-                        document.getElementById('volume-value').textContent = volumeValue;
-                    }
+                    // 修复音量显示问题：总是更新音量显示，除非用户正在主动调整
+                    // 这样可以确保显示正确的音量值
+                    var volumeValue = Math.round(data.volume) || 0;
+                    console.log('Updating volume display:', volumeValue);
+                    document.getElementById('volume').textContent = volumeValue;
+                    document.getElementById('volume-slider').value = volumeValue;
+                    document.getElementById('volume-value').textContent = volumeValue;
                 })
                 .catch(function(error) {
                     console.error('Error updating status:', error);
                     // 出错时也更新UI，显示错误状态
                     document.getElementById('current-file').textContent = '无';
                     document.getElementById('play-status').textContent = '未播放';
+                    document.getElementById('volume').textContent = '0';
+                    document.getElementById('volume-slider').value = '50';
+                    document.getElementById('volume-value').textContent = '50';
                 });
         }
         
@@ -1548,18 +1575,12 @@ def web_control_panel():
             }, 3000);
         }
         
-        // 添加音量设置时间跟踪
-        var lastVolumeSetTime = 0;
-        const VOLUME_UPDATE_DELAY = 3000; // 音量设置后3秒内不自动更新
-        
         function adjustVolume(value) {
+            console.log('Adjusting volume to:', value);
             // 立即更新所有音量显示元素，确保即时反馈
             document.getElementById('volume').textContent = value;
             document.getElementById('volume-value').textContent = value;
             document.getElementById('volume-slider').value = value;
-            
-            // 记录最后设置音量的时间
-            lastVolumeSetTime = Date.now();
             
             // 发送API请求设置音量
             fetch('/mpv/volume/set?value=' + value)
@@ -1719,7 +1740,6 @@ def web_control_panel():
         }
         
         // 自动播放下一首功能
-        let autoPlayInterval;
         let lastFileCount = 0;
         let lastCurrentFile = null; // 记录上一首播放的文件
         let isPlaying = false; // 记录播放状态
@@ -1729,23 +1749,30 @@ def web_control_panel():
             fetch('/mpv/status')
                 .then(response => response.json())
                 .then(data => {
-                    const hasCurrentFile = data.current_file && data.current_file.trim() !== '';
+                    console.log('Auto-play check:', data);
+                    
+                    // 确保current_file是字符串类型
+                    const currentFile = typeof data.current_file === 'string' ? data.current_file : '';
+                    const hasCurrentFile = currentFile && currentFile.trim() !== '';
                     const currentIsPlaying = hasCurrentFile && !data.paused;
                     
-                    // 检测播放结束的两种方式：
-                    // 1. 播放位置接近文件末尾（相差不到1秒）
+                    // 检测播放结束的三种方式：
+                    // 1. 播放位置接近文件末尾（相差不到2秒，更宽松的条件）
                     // 2. 从有文件播放到无文件，且上一首是播放状态
+                    // 3. 文件改变了，但上一个文件是存在的（可能是手动切换的）
                     const isNearEndOfPlayback = hasCurrentFile && data.position > 0 && 
                                               data.duration > 0 && 
-                                              (data.duration - data.position) < 1.0; // 小于1秒时认为即将结束
+                                              (data.duration - data.position) < 2.0; // 小于2秒时认为即将结束
                     
                     const isFileEnded = !hasCurrentFile && lastCurrentFile && isPlaying;
+                    const isFileChanged = hasCurrentFile && lastCurrentFile && currentFile !== lastCurrentFile;
                     
                     if (isNearEndOfPlayback || isFileEnded) {
                         console.log('检测到播放结束或接近结束，当前状态:', {
                             isNearEndOfPlayback,
                             isFileEnded,
-                            currentFile: lastCurrentFile,
+                            currentFile,
+                            lastFile: lastCurrentFile,
                             position: data.position,
                             duration: data.duration
                         });
@@ -1767,7 +1794,7 @@ def web_control_panel():
                     }
                     
                     // 更新状态记录
-                    lastCurrentFile = hasCurrentFile ? data.current_file : null;
+                    lastCurrentFile = hasCurrentFile ? currentFile : null;
                     isPlaying = currentIsPlaying;
                 })
                 .catch(error => {

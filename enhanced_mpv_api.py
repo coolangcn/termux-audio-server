@@ -342,22 +342,55 @@ def rclone_list_files():
 
 def rclone_copy_file(remote_path, local_path):
     """从NAS复制单个文件到本地"""
+    app.logger.info(f"[RCLONE] 开始复制文件: 远程={remote_path} -> 本地={local_path}")
+    
+    # 检查本地文件是否已存在
+    if os.path.exists(local_path):
+        app.logger.info(f"[RCLONE] 文件已存在于本地: {local_path}，跳过复制")
+        return True, "File already exists locally"
+    
     try:
         rclone_remote = "synology:download/bilibili/push"
         remote_file = f"{rclone_remote}/{remote_path}"
+        app.logger.debug(f"[RCLONE] 构建远程文件路径: {remote_file}")
         
         # 确保本地目录存在
         os.makedirs(os.path.dirname(local_path), exist_ok=True)
+        app.logger.debug(f"[RCLONE] 确保本地目录存在: {os.path.dirname(local_path)}")
         
+        import subprocess
         cmd = f"rclone copyto '{remote_file}' '{local_path}'"
-        result = os.system(cmd)
+        app.logger.debug(f"[RCLONE] 执行命令: {cmd}")
         
-        if result == 0:
-            return True, "File copied successfully"
+        start_time = time.time()
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        execution_time = time.time() - start_time
+        
+        app.logger.debug(f"[RCLONE] 命令执行完成，返回码: {result.returncode}，执行时间: {execution_time:.2f}秒")
+        
+        if result.stderr.strip():
+            app.logger.warning(f"[RCLONE] 命令有错误输出: {result.stderr.strip()}")
+        
+        if result.returncode == 0:
+            # 验证文件是否真的被复制成功
+            if os.path.exists(local_path):
+                file_size = os.path.getsize(local_path)
+                app.logger.info(f"[RCLONE] 文件复制成功: {remote_path} -> {local_path}, 文件大小: {file_size} 字节")
+                return True, f"File copied successfully (size: {file_size} bytes)"
+            else:
+                app.logger.error(f"[RCLONE] 文件复制命令成功执行，但目标文件不存在: {local_path}")
+                return False, "Command succeeded but file not found"
         else:
-            return False, "Failed to copy file"
+            error_msg = result.stderr.strip() or f"Command failed with exit code {result.returncode}"
+            app.logger.error(f"[RCLONE] 文件复制失败: {remote_path}, 错误: {error_msg}")
+            return False, error_msg
+            
+    except subprocess.SubprocessError as e:
+        app.logger.error(f"[RCLONE] 执行复制命令时出错: {remote_path}, 错误: {str(e)}", exc_info=True)
+        return False, f"Subprocess error: {str(e)}"
     except Exception as e:
-        return False, str(e)
+        app.logger.error(f"[RCLONE] 复制文件时发生未预期错误: {remote_path}, 错误: {str(e)}", exc_info=True)
+        return False, f"Unexpected error: {str(e)}"
 
 def get_file_from_cache_or_nas(filename):
     """从缓存获取文件，如果不存在则从NAS拉取"""
@@ -377,14 +410,83 @@ def get_file_from_cache_or_nas(filename):
 def auto_cache_worker():
     """自动缓存工作线程"""
     global auto_cache_running
+    app.logger.info("[AUTO_CACHE] 自动缓存线程已启动")
+    
     while auto_cache_running:
         try:
+            app.logger.debug("[AUTO_CACHE] 开始定期检查新文件")
+            # 获取NAS文件列表
+            files, message = rclone_list_files()
+            if files is not None:
+                app.logger.info(f"[AUTO_CACHE] 发现 {len(files)} 个文件在NAS上")
+                
+                # 检查每个文件是否已缓存，如果没有则缓存
+                for filename in files:
+                    if not auto_cache_running:  # 检查是否需要退出
+                        break
+                        
+                    local_file_path = os.path.join(LOCAL_DIR, filename)
+                    if not os.path.exists(local_file_path):
+                        app.logger.info(f"[AUTO_CACHE] 发现新文件需要缓存: {filename}")
+                        success, msg = rclone_copy_file(filename, local_file_path)
+                        if success:
+                            app.logger.info(f"[AUTO_CACHE] 文件缓存成功: {filename}")
+                        else:
+                            app.logger.error(f"[AUTO_CACHE] 文件缓存失败: {filename}, 错误: {msg}")
+                    else:
+                        app.logger.debug(f"[AUTO_CACHE] 文件已存在于缓存中: {filename}")
+            
             # 每30分钟检查一次新文件
-            rclone_sync()
+            app.logger.debug("[AUTO_CACHE] 检查完成，等待下一次执行 (30分钟)")
             time.sleep(1800)  # 30分钟
         except Exception as e:
-            print(f"Auto cache error: {e}")
+            app.logger.error(f"[AUTO_CACHE] 自动缓存出错: {str(e)}", exc_info=True)
+            # 出错后仍然继续，避免线程退出
             time.sleep(1800)
+
+@app.route('/cache/auto', methods=['POST'])
+@log_operation("控制自动缓存")
+def control_auto_cache():
+    """控制自动缓存服务的启动和停止"""
+    global auto_cache_thread, auto_cache_running
+    
+    try:
+        action = request.args.get('action', '').lower()
+        
+        if action == 'start':
+            if not auto_cache_running:
+                # 启动自动缓存线程
+                app.logger.info("[AUTO_CACHE] 正在启动自动缓存服务")
+                auto_cache_running = True
+                auto_cache_thread = threading.Thread(target=auto_cache_worker, daemon=True)
+                auto_cache_thread.start()
+                return jsonify({"status": "ok", "message": "自动缓存服务已启动"}), 200
+            else:
+                return jsonify({"status": "ok", "message": "自动缓存服务已经在运行"}), 200
+        
+        elif action == 'stop':
+            if auto_cache_running:
+                app.logger.info("[AUTO_CACHE] 正在停止自动缓存服务")
+                auto_cache_running = False
+                if auto_cache_thread:
+                    auto_cache_thread.join(timeout=5)  # 等待线程结束，最多5秒
+                return jsonify({"status": "ok", "message": "自动缓存服务已停止"}), 200
+            else:
+                return jsonify({"status": "ok", "message": "自动缓存服务未运行"}), 200
+        
+        elif action == 'status':
+            return jsonify({
+                "status": "ok",
+                "running": auto_cache_running,
+                "thread_alive": auto_cache_thread.is_alive() if auto_cache_thread else False
+            }), 200
+        
+        else:
+            return jsonify({"status": "error", "message": "无效的操作，支持的操作: start, stop, status"}), 400
+            
+    except Exception as e:
+        app.logger.error(f"[AUTO_CACHE] 控制自动缓存服务时出错: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 # API路由
 

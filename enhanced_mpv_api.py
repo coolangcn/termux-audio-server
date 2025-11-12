@@ -408,41 +408,62 @@ def get_file_from_cache_or_nas(filename):
         return False, None, f"Failed to get file from NAS: {message}"
 
 def auto_cache_worker():
-    """自动缓存工作线程"""
+    """自动缓存工作线程 - 只缓存下一首文件"""
     global auto_cache_running
-    app.logger.info("[AUTO_CACHE] 自动缓存线程已启动")
+    app.logger.info("[AUTO_CACHE] 自动缓存线程已启动 (只缓存下一首模式)")
     
     while auto_cache_running:
         try:
-            app.logger.debug("[AUTO_CACHE] 开始定期检查新文件")
-            # 获取NAS文件列表
-            files, message = rclone_list_files()
-            if files is not None:
-                app.logger.info(f"[AUTO_CACHE] 发现 {len(files)} 个文件在NAS上")
-                
-                # 检查每个文件是否已缓存，如果没有则缓存
-                for filename in files:
-                    if not auto_cache_running:  # 检查是否需要退出
-                        break
-                        
-                    local_file_path = os.path.join(LOCAL_DIR, filename)
-                    if not os.path.exists(local_file_path):
-                        app.logger.info(f"[AUTO_CACHE] 发现新文件需要缓存: {filename}")
-                        success, msg = rclone_copy_file(filename, local_file_path)
-                        if success:
-                            app.logger.info(f"[AUTO_CACHE] 文件缓存成功: {filename}")
-                        else:
-                            app.logger.error(f"[AUTO_CACHE] 文件缓存失败: {filename}, 错误: {msg}")
-                    else:
-                        app.logger.debug(f"[AUTO_CACHE] 文件已存在于缓存中: {filename}")
+            # 获取当前播放的文件信息，以确定下一首需要缓存的文件
+            current_file = None
+            try:
+                # 获取当前播放文件的名称
+                current_filename = get_mpv_property("filename")
+                if current_filename:
+                    current_file = os.path.basename(current_filename)
+                    app.logger.info(f"[AUTO_CACHE] 当前播放文件: {current_file}")
+            except Exception as e:
+                app.logger.warning(f"[AUTO_CACHE] 获取当前播放文件信息失败: {str(e)}")
             
-            # 每30分钟检查一次新文件
-            app.logger.debug("[AUTO_CACHE] 检查完成，等待下一次执行 (30分钟)")
-            time.sleep(1800)  # 30分钟
+            if current_file:
+                # 获取NAS文件列表
+                files, message = rclone_list_files()
+                if files is not None and len(files) > 0:
+                    # 排序文件列表，假设是按字母顺序或时间顺序
+                    sorted_files = sorted(files)
+                    
+                    # 找到当前文件在列表中的位置
+                    try:
+                        current_index = sorted_files.index(current_file)
+                        
+                        # 确定下一首文件（循环播放）
+                        if current_index < len(sorted_files) - 1:
+                            next_file = sorted_files[current_index + 1]
+                        else:
+                            # 到列表末尾了，下一首是第一个文件
+                            next_file = sorted_files[0]
+                        
+                        # 检查下一首文件是否已缓存
+                        local_file_path = os.path.join(LOCAL_DIR, next_file)
+                        if not os.path.exists(local_file_path):
+                            app.logger.info(f"[AUTO_CACHE] 开始缓存下一首文件: {next_file}")
+                            success, msg = rclone_copy_file(next_file, local_file_path)
+                            if success:
+                                app.logger.info(f"[AUTO_CACHE] 下一首文件缓存成功: {next_file}")
+                            else:
+                                app.logger.error(f"[AUTO_CACHE] 下一首文件缓存失败: {next_file}, 错误: {msg}")
+                        else:
+                            app.logger.info(f"[AUTO_CACHE] 下一首文件已存在于缓存中: {next_file}")
+                    except ValueError:
+                        app.logger.warning(f"[AUTO_CACHE] 当前播放文件 {current_file} 不在NAS文件列表中")
+            
+            # 每10分钟检查一次，而不是30分钟，以便及时缓存下一首
+            app.logger.debug("[AUTO_CACHE] 检查完成，等待下一次执行 (10分钟)")
+            time.sleep(600)  # 10分钟
         except Exception as e:
             app.logger.error(f"[AUTO_CACHE] 自动缓存出错: {str(e)}", exc_info=True)
             # 出错后仍然继续，避免线程退出
-            time.sleep(1800)
+            time.sleep(600)  # 出错后也等待10分钟
 
 @app.route('/cache/auto', methods=['POST'])
 @log_operation("控制自动缓存")
@@ -949,17 +970,17 @@ def search_files():
 @log_operation("手动同步文件")
 def sync_files():
     """手动同步NAS文件"""
-    # 如果请求体中有filename参数，则只同步单个文件
+    # 只允许同步单个文件，禁止同步所有文件
     try:
         data = request.get_json() or {}
         filename = data.get('filename')
         
-        if filename:
-            operation_logger.debug(f"[SYNC] 请求同步单个文件: {filename}")
-            success, message = rclone_sync(filename=filename)
-        else:
-            operation_logger.debug("[SYNC] 请求同步所有文件")
-            success, message = rclone_sync()
+        if not filename:
+            operation_logger.warning("[SYNC] 尝试同步所有文件，但已被禁止")
+            return jsonify({"status": "error", "message": "Syncing all files is not allowed"}), 403
+        
+        operation_logger.debug(f"[SYNC] 请求同步单个文件: {filename}")
+        success, message = rclone_sync(filename=filename)
             
         if success:
             return jsonify({"status": "ok", "message": "Sync completed successfully"}), 200

@@ -243,21 +243,86 @@ def get_audio_files():
     return sorted(files)
 
 def rclone_sync():
-    """同步NAS到本地缓存"""
+    """同步NAS到本地缓存（只缓存一个文件）"""
+    app.logger.debug("[RCLONE] 开始执行单文件同步")
     try:
-        # 这里需要根据实际的rclone配置调整
+        # 配置参数
         rclone_remote = "synology:download/bilibili/push"
         includes = "--include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
         
-        cmd = f"rclone copy '{rclone_remote}' '{LOCAL_DIR}' {includes} -P"
-        result = os.system(cmd)
+        app.logger.debug(f"[RCLONE] 远程路径: {rclone_remote}")
+        app.logger.debug(f"[RCLONE] 本地缓存路径: {LOCAL_DIR}")
         
-        if result == 0:
-            return True, "Sync completed successfully"
-        else:
-            return False, "Sync failed"
+        # 首先清理本地缓存目录中的旧文件
+        app.logger.debug("[RCLONE] 清理本地缓存目录中的旧文件")
+        try:
+            for filename in os.listdir(LOCAL_DIR):
+                file_path = os.path.join(LOCAL_DIR, filename)
+                if os.path.isfile(file_path):
+                    os.remove(file_path)
+                    app.logger.debug(f"[RCLONE] 删除旧文件: {filename}")
+        except Exception as e:
+            app.logger.warning(f"[RCLONE] 清理缓存文件时发生错误: {str(e)}")
+        
+        # 使用rclone lsjson获取文件列表
+        app.logger.debug("[RCLONE] 获取远程文件列表")
+        import subprocess
+        list_cmd = f"rclone lsjson '{rclone_remote}' {includes}"
+        list_result = subprocess.run(list_cmd, shell=True, capture_output=True, text=True)
+        
+        if list_result.returncode != 0:
+            error_msg = list_result.stderr.strip() or "获取文件列表失败"
+            app.logger.error(f"[RCLONE] 获取远程文件列表失败: {error_msg}")
+            return False, f"获取文件列表失败: {error_msg}"
+        
+        # 解析文件列表
+        try:
+            files_data = json.loads(list_result.stdout)
+            # 过滤出文件（非目录）
+            file_items = [item for item in files_data if not item.get('IsDir', False)]
+            app.logger.debug(f"[RCLONE] 找到 {len(file_items)} 个可下载文件")
+            
+            if not file_items:
+                app.logger.warning("[RCLONE] 未找到可下载的音频文件")
+                return False, "未找到可下载的音频文件"
+            
+            # 按修改时间排序，选择最新的一个文件（如果有ModTime字段）
+            if 'ModTime' in file_items[0]:
+                file_items.sort(key=lambda x: x.get('ModTime', ''), reverse=True)
+                selected_file = file_items[0]
+                app.logger.debug(f"[RCLONE] 按修改时间排序，选择最新文件: {selected_file['Path']}")
+            else:
+                # 否则随机选择一个文件
+                import random
+                selected_file = random.choice(file_items)
+                app.logger.debug(f"[RCLONE] 随机选择文件: {selected_file['Path']}")
+            
+            # 构建单个文件的下载命令
+            remote_file_path = f"{rclone_remote}/{selected_file['Path']}"
+            cmd = f"rclone copy '{remote_file_path}' '{LOCAL_DIR}' -P"
+            app.logger.debug(f"[RCLONE] 执行单文件同步命令: {cmd}")
+            
+            # 执行同步命令
+            start_time = time.time()
+            result = os.system(cmd)
+            execution_time = time.time() - start_time
+            
+            if result == 0:
+                app.logger.info(f"[RCLONE] 单文件同步成功: {selected_file['Path']}，耗时: {execution_time:.2f}秒")
+                return True, f"成功同步文件: {selected_file['Path']}"
+            else:
+                app.logger.error(f"[RCLONE] 单文件同步失败，返回码: {result}")
+                return False, f"同步文件失败: {selected_file['Path']}"
+                
+        except json.JSONDecodeError as e:
+            app.logger.error(f"[RCLONE] 解析文件列表失败: {str(e)}")
+            return False, f"解析文件列表失败: {str(e)}"
+        except KeyError as e:
+            app.logger.error(f"[RCLONE] 处理文件数据时缺少关键字段: {str(e)}")
+            return False, f"文件数据格式错误: {str(e)}"
     except Exception as e:
-        return False, str(e)
+        app.logger.error(f"[RCLONE] 单文件同步过程中发生异常: {str(e)}", exc_info=True)
+        return False, f"同步过程中发生异常: {str(e)}"        
 
 def rclone_list_files():
     """列出NAS上的音频文件（不下载）"""

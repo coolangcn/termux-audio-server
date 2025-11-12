@@ -64,21 +64,6 @@ chmod +x ~/termux-audio-server/*.py
 echo "🔗 创建软链接..."
 ln -sf ~/termux-audio-server/start_remote_audio.sh ~/start_audio_server
 ln -sf ~/termux-audio-server/stop_audio_server.sh ~/stop_audio_server
-ln -sf ~/termux-audio-server/fix_mpv_socket.sh ~/fix_mpv_socket
-ln -sf ~/termux-audio-server/fix_network_config.sh ~/fix_network_config
-ln -sf ~/termux-audio-server/fix_api_binding.sh ~/fix_api_binding
-ln -sf ~/termux-audio-server/diagnose_and_fix_api.sh ~/diagnose_api
-ln -sf ~/termux-audio-server/fix_logging_path.sh ~/fix_logging
-ln -sf ~/termux-audio-server/update_web_ui.sh ~/update_web_ui
-ln -sf ~/termux-audio-server/fix_api_after_ui_update.sh ~/fix_api_ui
-ln -sf ~/termux-audio-server/comprehensive_diagnose.sh ~/comprehensive_diagnose
-ln -sf ~/termux-audio-server/fix_api_binding_issue.sh ~/fix_api_binding_issue
-ln -sf ~/termux-audio-server/add_operation_log.sh ~/add_operation_log
-ln -sf ~/termux-audio-server/restart_with_logging.sh ~/restart_with_logging
-ln -sf ~/termux-audio-server/fix_web_ui_issues.sh ~/fix_web_ui_issues
-ln -sf ~/termux-audio-server/simple_fix_ui.sh ~/simple_fix_ui
-ln -sf ~/termux-audio-server/direct_fix_ui.py ~/direct_fix_ui
-ln -sf ~/termux-audio-server/test_and_fix_logging.py ~/test_and_fix_logging
 
 # 配置rclone
 echo ""
@@ -153,54 +138,3 @@ echo ""
 echo "已创建的脚本:"
 echo "  - 启动脚本: ~/start_audio_server"
 echo "  - 停止脚本: ~/stop_audio_server"
-echo "  - MPV Socket修复脚本: ~/fix_mpv_socket"
-echo "  - 网络配置修复脚本: ~/fix_network_config"
-echo "  - API绑定修复脚本: ~/fix_api_binding"
-echo "  - API诊断脚本: ~/diagnose_api"
-echo "  - 日志路径修复脚本: ~/fix_logging"
-echo "  - UI更新脚本: ~/update_web_ui"
-echo "  - UI更新后API修复脚本: ~/fix_api_ui"
-echo "  - 全面诊断脚本: ~/comprehensive_diagnose"
-echo "  - API绑定问题修复脚本: ~/fix_api_binding_issue"
-echo "  - 操作日志添加脚本: ~/add_operation_log"
-echo "  - 带日志功能的重启脚本: ~/restart_with_logging"
-echo "  - 网页UI问题修复脚本: ~/fix_web_ui_issues"
-echo "  - 简单UI修复脚本: ~/simple_fix_ui"
-echo "  - 直接UI修复脚本: ~/direct_fix_ui"
-echo "  - 测试和修复日志脚本: ~/test_and_fix_logging"
-echo "  - 部署目录: ~/termux-audio-server/"
-echo ""
-echo "📌 下一步操作:"
-echo "1. 配置rclone远程存储 (如果尚未完成)"
-echo "2. 编辑 ~/termux-audio-server/start_remote_audio.sh 文件配置您的NAS路径"
-echo "3. 运行 '~/start_audio_server' 启动音频服务器"
-echo "4. 在浏览器中访问显示的IP地址和端口"
-echo ""
-echo "💡 使用提示:"
-echo "- 启动服务器: ~/start_audio_server"
-echo "- 停止服务器: ~/stop_audio_server"
-echo "- 修复MPV Socket问题: ~/fix_mpv_socket"
-echo "- 修复网络配置问题: ~/fix_network_config"
-echo "- 修复API绑定问题: ~/fix_api_binding"
-echo "- 诊断API问题: ~/diagnose_api"
-echo "- 修复日志路径问题: ~/fix_logging"
-echo "- 更新网页UI: ~/update_web_ui"
-echo "- 修复UI更新后的API问题: ~/fix_api_ui"
-echo "- 全面诊断: ~/comprehensive_diagnose"
-echo "- 修复API绑定问题: ~/fix_api_binding_issue"
-echo "- 添加操作日志: ~/add_operation_log"
-echo "- 带日志功能的重启: ~/restart_with_logging"
-echo "- 修复网页UI问题: ~/fix_web_ui_issues"
-echo "- 简单UI修复: ~/simple_fix_ui"
-echo "- 直接UI修复: ~/direct_fix_ui"
-echo "- 测试和修复日志: ~/test_and_fix_logging"
-echo "- 查看日志: cat ~/api_server_debug.log"
-echo ""
-echo "🌐 项目GitHub地址: https://github.com/coolangcn/termux-audio-server"
-echo ""
-echo "🔧 已优化功能:"  
-echo "  • 使用增强版enhanced_mpv_api.py"  
-echo "  • 音量控制优化"  
-echo "  • 界面样式改进"  
-echo ""
-echo "如有任何问题，请查看GitHub上的README.md文件或提交issue。"

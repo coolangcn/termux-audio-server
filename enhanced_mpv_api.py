@@ -19,10 +19,10 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# 配置控制台实时日志记录
+# 配置控制台实时日志记录 - 设置为DEBUG级别以获取更详细信息
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler()
     ]
@@ -30,7 +30,7 @@ logging.basicConfig(
 
 # 保留Flask的默认日志，但调整级别
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.INFO)
+log.setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
@@ -51,65 +51,115 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # 创建专门的操作日志记录器
 operation_logger = logging.getLogger('operations')
-operation_logger.setLevel(logging.INFO)
+operation_logger.setLevel(logging.DEBUG)
 
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
-console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION] - %(message)s'))
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION:%(filename)s:%(lineno)d] - %(message)s'))
 operation_logger.addHandler(console_handler)
 
 # 创建文件处理器
 file_handler = logging.FileHandler(f"{LOG_DIR}/operations.log")
-file_handler.setLevel(logging.INFO)
+file_handler.setLevel(logging.DEBUG)
 
 # 创建日志格式
-formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+formatter = logging.Formatter('%(asctime)s [%(levelname)s] [%(filename)s:%(lineno)d] %(message)s')
 file_handler.setFormatter(formatter)
 
 # 添加处理器到记录器
 operation_logger.addHandler(file_handler)
 operation_logger.propagate = False  # 防止日志传播到父记录器
 
-# 添加操作日志装饰器
+# 添加操作日志装饰器 - 增强版本，记录更多详细信息
 def log_operation(operation):
     def decorator(f):
         def wrapper(*args, **kwargs):
+            # 记录请求参数
+            request_params = request.args.to_dict() if request else {}
             log_message = f"用户执行操作: {operation}"
+            
+            # 详细日志记录，包含请求参数和上下文信息
+            detailed_log = f"{log_message}, 请求参数: {request_params}, 函数: {f.__name__}"
+            operation_logger.debug(detailed_log)
+            
+            # 标准日志和实时输出
             operation_logger.info(log_message)
             print(f"[实时日志] {log_message}")
-            return f(*args, **kwargs)
+            
+            try:
+                # 执行原函数并记录执行结果
+                result = f(*args, **kwargs)
+                # 记录执行成功，但不记录完整响应体以避免过大日志
+                operation_logger.debug(f"操作 '{operation}' 执行成功, 函数: {f.__name__}")
+                return result
+            except Exception as e:
+                # 记录异常信息
+                operation_logger.error(f"操作 '{operation}' 执行失败: {str(e)}, 函数: {f.__name__}", exc_info=True)
+                raise
         wrapper.__name__ = f.__name__
+        wrapper.__doc__ = f.__doc__
         return wrapper
     return decorator
 
 def send_mpv_command(command):
     """使用 socat 向 mpv socket 发送命令"""
+    operation_logger.debug(f"[MPV命令] 尝试发送命令: {command}")
+    
+    # 检查socket文件是否存在
     if not os.path.exists(MPV_SOCKET_PATH):
-        return False, f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
-
+        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
+        operation_logger.error(f"[MPV命令] {error_msg}")
+        return False, error_msg
+    
+    # 记录socket文件权限信息以帮助排查权限问题
+    if os.path.exists(MPV_SOCKET_PATH):
+        import stat
+        stat_info = os.stat(MPV_SOCKET_PATH)
+        operation_logger.debug(f"[MPV命令] Socket文件存在，权限: {stat.filemode(stat_info.st_mode)}, 所有者: {stat_info.st_uid}:{stat_info.st_gid}")
+    
+    # 构建JSON命令
     json_command = json.dumps({"command": command})
+    operation_logger.debug(f"[MPV命令] 构建的JSON命令: {json_command}")
     
     # 使用 socat 执行命令
     cmd = f'echo \'{json_command}\' | socat -t 0 - UNIX-CONNECT:{MPV_SOCKET_PATH}'
-    result = os.system(cmd)
+    operation_logger.debug(f"[MPV命令] 执行的系统命令: {cmd}")
     
-    if result == 0:
-        return True, "Command sent successfully."
-    else:
-        return False, "Failed to send command via socat."
+    try:
+        result = os.system(cmd)
+        operation_logger.debug(f"[MPV命令] 系统命令返回码: {result}")
+        
+        if result == 0:
+            operation_logger.debug(f"[MPV命令] 命令 '{command}' 发送成功")
+            return True, "Command sent successfully."
+        else:
+            error_msg = f"Failed to send command via socat, return code: {result}"
+            operation_logger.error(f"[MPV命令] {error_msg}")
+            return False, error_msg
+    except Exception as e:
+        error_msg = f"Exception when sending MPV command: {str(e)}"
+        operation_logger.error(f"[MPV命令] {error_msg}", exc_info=True)
+        return False, error_msg
 
 def get_mpv_property(property_name):
     """获取MPV属性值"""
+    operation_logger.debug(f"[MPV属性] 尝试获取属性: {property_name}")
+    
+    # 检查socket文件是否存在
     if not os.path.exists(MPV_SOCKET_PATH):
-        app.logger.warning(f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?")
-        return None, f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
-
+        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
+        operation_logger.error(f"[MPV属性] {error_msg}")
+        return None, error_msg
+    
+    # 构建JSON命令
     json_command = json.dumps({"command": ["get_property", property_name]})
+    operation_logger.debug(f"[MPV属性] 构建的JSON命令: {json_command}")
     
     # 使用socat发送命令并获取输出
     import subprocess
     try:
+        operation_logger.debug(f"[MPV属性] 执行subprocess命令获取属性")
         result = subprocess.run(
             ['socat', '-t', '1', '-', f'UNIX-CONNECT:{MPV_SOCKET_PATH}'],
             input=json_command,
@@ -117,49 +167,64 @@ def get_mpv_property(property_name):
             capture_output=True,
             timeout=2  # 添加超时限制
         )
+        
+        operation_logger.debug(f"[MPV属性] subprocess返回码: {result.returncode}")
+        operation_logger.debug(f"[MPV属性] 标准输出: '{result.stdout.strip()}'")
+        operation_logger.debug(f"[MPV属性] 标准错误: '{result.stderr.strip()}'")
+        
         if result.returncode == 0:
             response_text = result.stdout.strip()
             if response_text:
+                operation_logger.debug(f"[MPV属性] 收到响应文本: {response_text}")
                 try:
                     response = json.loads(response_text)
+                    operation_logger.debug(f"[MPV属性] 解析后的响应: {response}")
+                    
                     if 'data' in response:
-                        app.logger.info(f"Successfully got property {property_name}: {response['data']}")
+                        operation_logger.debug(f"[MPV属性] 成功获取属性 {property_name}: {response['data']}")
                         # 特殊处理filename属性，确保返回字符串类型
                         if property_name == "filename" and response['data'] is None:
+                            operation_logger.debug(f"[MPV属性] filename属性为None，返回空字符串")
                             return "", "Success"
                         return response['data'], "Success"
                     elif 'error' in response:
-                        app.logger.warning(f"MPV property error for {property_name}: {response['error']}")
+                        operation_logger.warning(f"[MPV属性] MPV属性错误 {property_name}: {response['error']}")
                         # 对于filename属性，如果出错则返回空字符串而不是None
                         if property_name == "filename":
+                            operation_logger.debug(f"[MPV属性] filename属性出错，返回空字符串")
                             return "", "MPV error but returning empty string for filename"
                         return None, f"MPV error: {response['error']}"
+                    else:
+                        operation_logger.warning(f"[MPV属性] 响应中既没有data也没有error字段: {response}")
+                        if property_name == "filename":
+                            return "", "No data or error but returning empty string for filename"
+                        return None, "Response contains neither data nor error"
                 except json.JSONDecodeError:
-                    app.logger.error(f"Failed to parse MPV response: {response_text}")
+                    operation_logger.error(f"[MPV属性] 解析MPV响应失败: {response_text}")
                     # 对于filename属性，解析失败时返回空字符串
                     if property_name == "filename":
                         return "", "Failed to parse but returning empty string for filename"
                     return None, "Failed to parse MPV response"
             else:
-                app.logger.warning(f"Empty response from MPV for property {property_name}")
+                operation_logger.warning(f"[MPV属性] 从MPV收到空响应，属性: {property_name}")
                 # 对于filename属性，空响应时返回空字符串
                 if property_name == "filename":
                     return "", "Empty response but returning empty string for filename"
                 return None, "Empty response from MPV"
         else:
-            app.logger.warning(f"Failed to get property {property_name}, return code: {result.returncode}, stderr: {result.stderr}")
+            operation_logger.warning(f"[MPV属性] 获取属性 {property_name} 失败, 返回码: {result.returncode}, 错误输出: {result.stderr}")
             # 对于filename属性，命令失败时返回空字符串
             if property_name == "filename":
                 return "", "Command failed but returning empty string for filename"
             return None, f"Command failed with return code {result.returncode}"
     except subprocess.TimeoutExpired:
-        app.logger.error(f"Timeout getting MPV property {property_name}")
+        operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 超时")
         # 对于filename属性，超时时返回空字符串
         if property_name == "filename":
             return "", "Timeout but returning empty string for filename"
         return None, "Timeout getting MPV property"
     except Exception as e:
-        app.logger.error(f"Exception getting MPV property {property_name}: {str(e)}")
+        operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 异常: {str(e)}", exc_info=True)
         # 对于filename属性，异常时返回空字符串
         if property_name == "filename":
             return "", "Exception but returning empty string for filename"
@@ -196,27 +261,58 @@ def rclone_sync():
 
 def rclone_list_files():
     """列出NAS上的音频文件（不下载）"""
+    app.logger.debug("[RCLONE] 开始获取NAS文件列表")
     try:
         rclone_remote = "synology:download/bilibili/push"
+        app.logger.debug(f"[RCLONE] 使用远程路径: {rclone_remote}")
         
         # 使用rclone lsjson获取文件列表
         cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
+        app.logger.debug(f"[RCLONE] 执行命令: {cmd}")
         
         import subprocess
+        start_time = time.time()
         result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        execution_time = time.time() - start_time
+        
+        app.logger.debug(f"[RCLONE] 命令执行完成，返回码: {result.returncode}，执行时间: {execution_time:.2f}秒")
+        app.logger.debug(f"[RCLONE] 标准输出长度: {len(result.stdout)} 字符")
+        app.logger.debug(f"[RCLONE] 错误输出长度: {len(result.stderr)} 字符")
+        
+        if result.stderr.strip():
+            app.logger.warning(f"[RCLONE] 命令有错误输出: {result.stderr.strip()}")
         
         if result.returncode == 0:
+            app.logger.debug("[RCLONE] 命令执行成功，开始解析JSON输出")
             try:
                 files_data = json.loads(result.stdout)
+                app.logger.debug(f"[RCLONE] JSON解析成功，获取到 {len(files_data)} 个项目")
+                
+                # 统计目录和文件数量
+                dir_count = sum(1 for item in files_data if item.get('IsDir', False))
+                file_count = len(files_data) - dir_count
+                app.logger.debug(f"[RCLONE] 其中包含 {dir_count} 个目录和 {file_count} 个文件")
+                
                 # 只返回文件名列表
                 file_list = [item['Path'] for item in files_data if not item.get('IsDir', False)]
+                app.logger.debug(f"[RCLONE] 最终返回文件列表，长度: {len(file_list)}")
+                app.logger.debug(f"[RCLONE] 文件列表示例: {file_list[:3] if len(file_list) > 0 else '空列表'}")
                 return file_list, "Success"
-            except json.JSONDecodeError:
-                return [], "Failed to parse rclone output"
+            except json.JSONDecodeError as e:
+                app.logger.error(f"[RCLONE] JSON解析失败: {str(e)}")
+                app.logger.debug(f"[RCLONE] 原始输出前200字符: {result.stdout[:200]}")
+                return [], f"Failed to parse rclone output: {str(e)}"
+            except KeyError as e:
+                app.logger.error(f"[RCLONE] 处理文件数据时缺少关键字段: {str(e)}")
+                return [], f"Key error in rclone data: {str(e)}"
         else:
-            return [], f"rclone command failed: {result.stderr}"
+            app.logger.error(f"[RCLONE] 命令执行失败，返回码: {result.returncode}")
+            error_msg = result.stderr.strip() or "No error message provided"
+            app.logger.error(f"[RCLONE] 错误详情: {error_msg}")
+            return [], f"rclone command failed (code {result.returncode}): {error_msg}"
     except Exception as e:
-        return [], str(e)
+        app.logger.error(f"[RCLONE] 获取文件列表时发生异常: {str(e)}", exc_info=True)
+        return [], f"Exception during rclone operation: {str(e)}"
 
 def rclone_copy_file(remote_path, local_path):
     """从NAS复制单个文件到本地"""
@@ -611,57 +707,83 @@ def get_status():
     """获取播放状态"""
     status = {}
     
-    app.logger.info("Getting MPV status...")
+    app.logger.debug("[状态获取] 开始获取MPV播放状态")
     
-    # 获取播放状态
-    pause_state, pause_msg = get_mpv_property("pause")
-    status["paused"] = pause_state if pause_state is not None else False
-    if pause_state is None:
-        app.logger.warning(f"Failed to get pause state: {pause_msg}")
-    
-    # 获取当前播放文件 - 尝试多种属性
-    filename, filename_msg = get_mpv_property("filename")
-    app.logger.info(f"Got filename property: {filename}, message: {filename_msg}")
-    
-    # 确保filename是字符串类型
-    if filename is None:
-        filename = ""
-    
-    if not filename:  # 如果filename为空，尝试获取path属性
-        path, path_msg = get_mpv_property("path")
-        app.logger.info(f"Got path property: {path}, message: {path_msg}")
-        if path:
-            # 从路径中提取文件名
-            filename = os.path.basename(path)
-            app.logger.info(f"Extracted filename from path: {filename}")
-    
-    # 如果还是没有，尝试media-title
-    if not filename:
-        media_title, media_msg = get_mpv_property("media-title")
-        app.logger.info(f"Got media-title property: {media_title}, message: {media_msg}")
-        if media_title:
-            filename = media_title
-    
-    # 确保最终返回的文件名是字符串类型
-    status["current_file"] = filename if isinstance(filename, str) else ""
-    app.logger.info(f"Final current_file: {status['current_file']}")
-    
-    # 获取音量
-    volume, _ = get_mpv_property("volume")
-    status["volume"] = volume if volume is not None else 0
-    
-    # 获取播放列表
-    playlist, _ = get_mpv_property("playlist")
-    status["playlist"] = playlist if playlist is not None else []
-    
-    # 获取播放位置和持续时间
-    position, _ = get_mpv_property("time-pos")
-    duration, _ = get_mpv_property("duration")
-    status["position"] = position if position is not None else 0
-    status["duration"] = duration if duration is not None else 0
-    
-    app.logger.info(f"Complete status: {status}")
-    return jsonify(status), 200
+    try:
+        # 获取播放状态
+        app.logger.debug("[状态获取] 尝试获取pause属性")
+        pause_state, pause_msg = get_mpv_property("pause")
+        app.logger.debug(f"[状态获取] 获取pause属性结果: {pause_state}, 消息: {pause_msg}")
+        status["paused"] = pause_state if pause_state is not None else False
+        if pause_state is None:
+            app.logger.warning(f"[状态获取] 获取pause状态失败: {pause_msg}")
+        
+        # 获取当前播放文件 - 尝试多种属性
+        app.logger.debug("[状态获取] 尝试获取filename属性")
+        filename, filename_msg = get_mpv_property("filename")
+        app.logger.debug(f"[状态获取] 获取filename属性结果: {filename}, 消息: {filename_msg}")
+        
+        # 确保filename是字符串类型
+        if filename is None:
+            filename = ""
+            app.logger.debug("[状态获取] filename为None，设置为空字符串")
+        
+        if not filename:  # 如果filename为空，尝试获取path属性
+            app.logger.debug("[状态获取] filename为空，尝试获取path属性")
+            path, path_msg = get_mpv_property("path")
+            app.logger.debug(f"[状态获取] 获取path属性结果: {path}, 消息: {path_msg}")
+            if path:
+                # 从路径中提取文件名
+                filename = os.path.basename(path)
+                app.logger.debug(f"[状态获取] 从path提取文件名: {filename}")
+        
+        # 如果还是没有，尝试media-title
+        if not filename:
+            app.logger.debug("[状态获取] filename仍为空，尝试获取media-title属性")
+            media_title, media_msg = get_mpv_property("media-title")
+            app.logger.debug(f"[状态获取] 获取media-title属性结果: {media_title}, 消息: {media_msg}")
+            if media_title:
+                filename = media_title
+                app.logger.debug(f"[状态获取] 使用media-title作为文件名: {filename}")
+        
+        # 确保最终返回的文件名是字符串类型
+        status["current_file"] = filename if isinstance(filename, str) else ""
+        app.logger.debug(f"[状态获取] 最终current_file值: {status['current_file']}, 类型: {type(status['current_file']).__name__}")
+        
+        # 获取音量
+        app.logger.debug("[状态获取] 尝试获取volume属性")
+        volume, volume_msg = get_mpv_property("volume")
+        app.logger.debug(f"[状态获取] 获取volume属性结果: {volume}, 消息: {volume_msg}")
+        status["volume"] = volume if volume is not None else 0
+        
+        # 获取播放列表
+        app.logger.debug("[状态获取] 尝试获取playlist属性")
+        playlist, playlist_msg = get_mpv_property("playlist")
+        app.logger.debug(f"[状态获取] 获取playlist属性结果: 类型={type(playlist).__name__}, 长度={len(playlist) if isinstance(playlist, list) else 'N/A'}")
+        status["playlist"] = playlist if playlist is not None else []
+        
+        # 获取播放位置和持续时间
+        app.logger.debug("[状态获取] 尝试获取time-pos属性")
+        position, position_msg = get_mpv_property("time-pos")
+        app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
+        status["position"] = position if position is not None else 0
+        
+        app.logger.debug("[状态获取] 尝试获取duration属性")
+        duration, duration_msg = get_mpv_property("duration")
+        app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
+        status["duration"] = duration if duration is not None else 0
+        
+        # 计算播放进度百分比
+        if duration and duration > 0:
+            progress = (position / duration) * 100 if position else 0
+            status["progress"] = round(progress, 2)
+            app.logger.debug(f"[状态获取] 计算播放进度: {status['progress']}%")
+        
+        app.logger.debug(f"[状态获取] 完整状态数据: {json.dumps(status, ensure_ascii=False)}")
+        return jsonify(status), 200
+    except Exception as e:
+        app.logger.error(f"[状态获取] 获取状态时发生异常: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": f"获取状态失败: {str(e)}", "error_type": type(e).__name__}), 500
 
 @app.route('/files', methods=['GET'])
 @log_operation("列出文件列表")

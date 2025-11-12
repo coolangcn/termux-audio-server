@@ -242,87 +242,48 @@ def get_audio_files():
             files.append(file)
     return sorted(files)
 
-def rclone_sync():
-    """同步NAS到本地缓存（只缓存一个文件）"""
-    app.logger.debug("[RCLONE] 开始执行单文件同步")
+def rclone_sync(filename=None):
+    """同步NAS文件到本地缓存（一次只缓存一个文件，已缓存的文件不再重复缓存）
+    
+    Args:
+        filename: 要缓存的文件名，如果为None则列出文件但不缓存
+        
+    Returns:
+        tuple: (是否成功, 消息)
+    """
+    app.logger.debug(f"[RCLONE] 开始同步，目标文件: {filename}")
     try:
-        # 配置参数
-        rclone_remote = "synology:download/bilibili/push"
-        includes = "--include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
+        # 确保本地缓存目录存在
+        os.makedirs(LOCAL_DIR, exist_ok=True)
         
-        app.logger.debug(f"[RCLONE] 远程路径: {rclone_remote}")
-        app.logger.debug(f"[RCLONE] 本地缓存路径: {LOCAL_DIR}")
-        
-        # 首先清理本地缓存目录中的旧文件
-        app.logger.debug("[RCLONE] 清理本地缓存目录中的旧文件")
-        try:
-            for filename in os.listdir(LOCAL_DIR):
-                file_path = os.path.join(LOCAL_DIR, filename)
-                if os.path.isfile(file_path):
-                    os.remove(file_path)
-                    app.logger.debug(f"[RCLONE] 删除旧文件: {filename}")
-        except Exception as e:
-            app.logger.warning(f"[RCLONE] 清理缓存文件时发生错误: {str(e)}")
-        
-        # 使用rclone lsjson获取文件列表
-        app.logger.debug("[RCLONE] 获取远程文件列表")
-        import subprocess
-        list_cmd = f"rclone lsjson '{rclone_remote}' {includes}"
-        list_result = subprocess.run(list_cmd, shell=True, capture_output=True, text=True)
-        
-        if list_result.returncode != 0:
-            error_msg = list_result.stderr.strip() or "获取文件列表失败"
-            app.logger.error(f"[RCLONE] 获取远程文件列表失败: {error_msg}")
-            return False, f"获取文件列表失败: {error_msg}"
-        
-        # 解析文件列表
-        try:
-            files_data = json.loads(list_result.stdout)
-            # 过滤出文件（非目录）
-            file_items = [item for item in files_data if not item.get('IsDir', False)]
-            app.logger.debug(f"[RCLONE] 找到 {len(file_items)} 个可下载文件")
+        # 如果指定了文件名
+        if filename:
+            # 检查文件是否已经在本地缓存中
+            local_file_path = os.path.join(LOCAL_DIR, filename)
+            if os.path.exists(local_file_path):
+                app.logger.debug(f"[RCLONE] 文件已存在于缓存中: {filename}")
+                return True, f"文件 '{filename}' 已存在于缓存中，不需要重新下载"
             
-            if not file_items:
-                app.logger.warning("[RCLONE] 未找到可下载的音频文件")
-                return False, "未找到可下载的音频文件"
-            
-            # 按修改时间排序，选择最新的一个文件（如果有ModTime字段）
-            if 'ModTime' in file_items[0]:
-                file_items.sort(key=lambda x: x.get('ModTime', ''), reverse=True)
-                selected_file = file_items[0]
-                app.logger.debug(f"[RCLONE] 按修改时间排序，选择最新文件: {selected_file['Path']}")
+            # 使用rclone_copy_file复制单个文件
+            app.logger.debug(f"[RCLONE] 开始缓存文件: {filename}")
+            success, message = rclone_copy_file(filename, local_file_path)
+            if success:
+                app.logger.debug(f"[RCLONE] 文件缓存成功: {filename}")
+                return True, f"文件 '{filename}' 缓存成功"
             else:
-                # 否则随机选择一个文件
-                import random
-                selected_file = random.choice(file_items)
-                app.logger.debug(f"[RCLONE] 随机选择文件: {selected_file['Path']}")
-            
-            # 构建单个文件的下载命令
-            remote_file_path = f"{rclone_remote}/{selected_file['Path']}"
-            cmd = f"rclone copy '{remote_file_path}' '{LOCAL_DIR}' -P"
-            app.logger.debug(f"[RCLONE] 执行单文件同步命令: {cmd}")
-            
-            # 执行同步命令
-            start_time = time.time()
-            result = os.system(cmd)
-            execution_time = time.time() - start_time
-            
-            if result == 0:
-                app.logger.info(f"[RCLONE] 单文件同步成功: {selected_file['Path']}，耗时: {execution_time:.2f}秒")
-                return True, f"成功同步文件: {selected_file['Path']}"
+                app.logger.error(f"[RCLONE] 文件缓存失败: {filename}, 错误: {message}")
+                return False, f"文件 '{filename}' 缓存失败: {message}"
+        else:
+            # 如果没有指定文件名，返回文件列表但不缓存
+            app.logger.debug("[RCLONE] 未指定文件名，返回NAS文件列表")
+            files, message = rclone_list_files()
+            if files is not None:
+                return True, f"NAS中有 {len(files)} 个文件可用"
             else:
-                app.logger.error(f"[RCLONE] 单文件同步失败，返回码: {result}")
-                return False, f"同步文件失败: {selected_file['Path']}"
-                
-        except json.JSONDecodeError as e:
-            app.logger.error(f"[RCLONE] 解析文件列表失败: {str(e)}")
-            return False, f"解析文件列表失败: {str(e)}"
-        except KeyError as e:
-            app.logger.error(f"[RCLONE] 处理文件数据时缺少关键字段: {str(e)}")
-            return False, f"文件数据格式错误: {str(e)}"
+                return False, message
     except Exception as e:
-        app.logger.error(f"[RCLONE] 单文件同步过程中发生异常: {str(e)}", exc_info=True)
-        return False, f"同步过程中发生异常: {str(e)}"        
+        app.logger.error(f"[RCLONE] 同步过程中发生异常: {str(e)}", exc_info=True)
+        return False, f"同步异常: {str(e)}"
 
 def rclone_list_files():
     """列出NAS上的音频文件（不下载）"""
@@ -886,10 +847,45 @@ def search_files():
 @log_operation("手动同步文件")
 def sync_files():
     """手动同步NAS文件"""
-    success, message = rclone_sync()
-    if success:
-        return jsonify({"status": "ok", "message": "Sync completed successfully"}), 200
-    return jsonify({"status": "error", "message": message}), 500
+    # 如果请求体中有filename参数，则只同步单个文件
+    try:
+        data = request.get_json() or {}
+        filename = data.get('filename')
+        
+        if filename:
+            operation_logger.debug(f"[SYNC] 请求同步单个文件: {filename}")
+            success, message = rclone_sync(filename=filename)
+        else:
+            operation_logger.debug("[SYNC] 请求同步所有文件")
+            success, message = rclone_sync()
+            
+        if success:
+            return jsonify({"status": "ok", "message": "Sync completed successfully"}), 200
+        return jsonify({"status": "error", "message": message}), 500
+    except Exception as e:
+        operation_logger.error(f"[SYNC] 同步文件时出错: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+@app.route('/files/cache', methods=['POST'])
+@log_operation("缓存指定文件")
+def cache_file():
+    """缓存指定的单个文件"""
+    try:
+        data = request.get_json() or {}
+        filename = data.get('filename')
+        
+        if not filename:
+            return jsonify({"status": "error", "message": "Filename is required"}), 400
+            
+        operation_logger.debug(f"[CACHE] 请求缓存文件: {filename}")
+        success, message = rclone_sync(filename=filename)
+        
+        if success:
+            return jsonify({"status": "ok", "message": f"File '{filename}' cached successfully"}), 200
+        return jsonify({"status": "error", "message": message}), 500
+    except Exception as e:
+        operation_logger.error(f"[CACHE] 缓存文件时出错: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/logs', methods=['GET'])
 @log_operation("获取操作日志")

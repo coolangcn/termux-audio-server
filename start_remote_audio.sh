@@ -17,7 +17,7 @@ API_SCRIPT=~/termux-audio-server/enhanced_mpv_api.py
 API_PORT=5000
 FILE_REGEX='.*\.\(mp4\|mp3\|flac\|ogg\|aac\|m4a\|wav\|webm\)'
 RCLONE_INCLUDES='--include "*.mp4" --include "*.mp3" --include "*.flac" --include "*.ogg" --include "*.aac" --include "*.m4a" --include "*.wav" --include "*.webm"'
-PLAYLIST_FILE=~/mpv_playlist_$$ 
+PLAYLIST_FILE=~/mpv_playlist_fixed.txt 
 
 # 自动缓存配置
 AUTO_CACHE_INTERVAL=1800  # 30分钟检查一次新文件
@@ -38,7 +38,8 @@ eval rclone copy "$RCLONE_REMOTE" "$LOCAL_DIR" $RCLONE_INCLUDES -P
 
 if [ $? -ne 0 ]; then
     echo "❌ Rclone 复制失败！请检查 synology 配置和网络连接。"
-    rm -f "$PLAYLIST_FILE" 2>/dev/null 
+    rm -f "$PLAYLIST_FILE" 2>/dev/null
+    echo "播放列表文件已删除"
     exit 1
 fi
 echo "✅ 文件复制完成。"
@@ -46,11 +47,13 @@ echo "✅ 文件复制完成。"
 # --- 3. 启动 MPV 播放器 ---
 echo "--- 3. 启动 MPV 播放器并监听 IPC Socket ---"
 
-# 安全地创建播放列表文件
-find "$LOCAL_DIR" -maxdepth 1 -type f -regex "$FILE_REGEX" -print > "$PLAYLIST_FILE"
+# 直接从NAS获取文件列表创建播放列表文件
+echo "--- 获取NAS文件列表创建播放列表 ---"
+# 使用rclone lsjson命令获取文件列表并提取文件名
+eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | grep -oP '"Name":"\K[^"]+?(?=")' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
 
 if [ ! -s "$PLAYLIST_FILE" ]; then
-    echo "❌ 本地缓存目录 ($LOCAL_DIR) 下未找到可播放文件！"
+    echo "❌ NAS目录下未找到可播放文件！请检查 $RCLONE_REMOTE 目录中是否有支持的音频文件"
     rm -f "$PLAYLIST_FILE" 2>/dev/null
     exit 1
 fi
@@ -116,5 +119,5 @@ echo "暂停/播放: GET http://$IP_ADDRESS:$API_PORT/mpv/pause"
 echo "下一首:   GET http://$IP_ADDRESS:$API_PORT/mpv/next"
 echo "上一首:   GET http://$IP_ADDRESS:$API_PORT/mpv/prev"
 echo "搜索歌曲: GET http://$IP_ADDRESS:$API_PORT/files/search?q=关键字"
-echo "停止所有服务: killall mpv python && rm -rf $LOCAL_DIR $PLAYLIST_FILE"
+echo "停止所有服务: killall mpv python rclone && rm -rf \"$LOCAL_DIR\" \"$PLAYLIST_FILE\""
 echo "--------------------------------------------------------"

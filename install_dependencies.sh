@@ -6,7 +6,7 @@ echo "正在安装音频服务器依赖..."
 pkg update -y
 
 # 安装必要的系统工具
-pkg install -y python socat rclone mpv
+pkg install -y python socat rclone mpv jq
 
 # 安装Python依赖
 pip install -r ~/requirements.txt

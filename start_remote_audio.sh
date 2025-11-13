@@ -30,19 +30,11 @@ killall -q rclone mpv python 2>/dev/null
 # 确保本地目录存在
 mkdir -p "$LOCAL_DIR"
 
-# --- 2. 复制文件到本地 ---
-echo "--- 2. 开始从 NAS 复制文件到本地缓存目录: $LOCAL_DIR ---"
-echo "--- 请等待复制完成（会显示进度条） ---"
-
-eval rclone copy "$RCLONE_REMOTE" "$LOCAL_DIR" $RCLONE_INCLUDES -P
-
-if [ $? -ne 0 ]; then
-    echo "❌ Rclone 复制失败！请检查 synology 配置和网络连接。"
-    rm -f "$PLAYLIST_FILE" 2>/dev/null
-    echo "播放列表文件已删除"
-    exit 1
-fi
-echo "✅ 文件复制完成。"
+# --- 2. 准备本地缓存目录 ---
+echo "--- 2. 准备本地缓存目录: $LOCAL_DIR ---"
+# 只创建目录，不预先复制所有文件
+mkdir -p "$LOCAL_DIR"
+echo "✅ 本地缓存目录准备完成。"
 
 # --- 3. 启动 MPV 播放器 ---
 echo "--- 3. 启动 MPV 播放器并监听 IPC Socket ---"

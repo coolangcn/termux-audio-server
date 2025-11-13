@@ -19,9 +19,9 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# 配置控制台实时日志记录 - 设置为DEBUG级别以获取更详细信息
+# 配置控制台实时日志记录 - 设置为INFO级别以减少日志输出
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -30,10 +30,11 @@ logging.basicConfig(
 
 # 保留Flask的默认日志，但调整级别
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.DEBUG)
+log.setLevel(logging.INFO)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
+app.logger.setLevel(logging.INFO)
 
 # MPV Socket路径
 MPV_SOCKET_PATH = "/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
@@ -51,11 +52,11 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # 创建专门的操作日志记录器
 operation_logger = logging.getLogger('operations')
-operation_logger.setLevel(logging.DEBUG)
+operation_logger.setLevel(logging.INFO)
 
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.DEBUG)
+console_handler.setLevel(logging.INFO)
 console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION:%(filename)s:%(lineno)d] - %(message)s'))
 operation_logger.addHandler(console_handler)
 
@@ -71,7 +72,7 @@ file_handler.setFormatter(formatter)
 operation_logger.addHandler(file_handler)
 operation_logger.propagate = False  # 防止日志传播到父记录器
 
-# 添加操作日志装饰器 - 增强版本，记录更多详细信息
+# 添加操作日志装饰器 - 简化版本，减少日志输出
 def log_operation(operation):
     def decorator(f):
         def wrapper(*args, **kwargs):
@@ -79,23 +80,14 @@ def log_operation(operation):
             request_params = request.args.to_dict() if request else {}
             log_message = f"用户执行操作: {operation}"
             
-            # 详细日志记录，包含请求参数和上下文信息
-            detailed_log = f"{log_message}, 请求参数: {request_params}, 函数: {f.__name__}"
-            operation_logger.debug(detailed_log)
-            
-            # 标准日志和实时输出
-            operation_logger.info(log_message)
-            print(f"[实时日志] {log_message}")
-            
             try:
                 # 执行原函数并记录执行结果
                 result = f(*args, **kwargs)
-                # 记录执行成功，但不记录完整响应体以避免过大日志
-                operation_logger.debug(f"操作 '{operation}' 执行成功, 函数: {f.__name__}")
                 return result
             except Exception as e:
-                # 记录异常信息
-                operation_logger.error(f"操作 '{operation}' 执行失败: {str(e)}, 函数: {f.__name__}", exc_info=True)
+                # 仅在发生错误时记录详细信息
+                detailed_log = f"{log_message}, 请求参数: {request_params}, 函数: {f.__name__}"
+                operation_logger.error(f"操作 '{operation}' 执行失败: {str(e)}, {detailed_log}", exc_info=True)
                 raise
         wrapper.__name__ = f.__name__
         wrapper.__doc__ = f.__doc__

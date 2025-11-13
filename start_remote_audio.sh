@@ -42,7 +42,14 @@ echo "--- 3. 启动 MPV 播放器并监听 IPC Socket ---"
 # 直接从NAS获取文件列表创建播放列表文件
 echo "--- 获取NAS文件列表创建播放列表 ---"
 # 使用rclone lsjson命令获取文件列表并提取文件名
-eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | jq -r '.[].Name' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+# 检查jq是否可用，如果不可用则使用grep回退方案
+if command -v jq &> /dev/null; then
+    eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | jq -r '.[].Name' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+else
+    echo "⚠️ jq命令未找到，使用grep回退方案解析JSON..."
+    # 使用标准grep代替Perl正则，提高兼容性
+    eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | grep '"Name":' | sed 's/.*"Name": "\([^"]*\)".*/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+fi
 
 if [ ! -s "$PLAYLIST_FILE" ]; then
     echo "❌ NAS目录下未找到可播放文件！请检查 $RCLONE_REMOTE 目录中是否有支持的音频文件"

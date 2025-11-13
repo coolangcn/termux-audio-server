@@ -68,8 +68,8 @@ if command -v jq &> /dev/null; then
     echo "$TEST_OUTPUT" | jq -r '.[].Name' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
 else
     echo "⚠️ jq命令未找到，使用兼容版grep/sed回退方案解析JSON..."
-    # 使用基本的grep和sed命令，确保在任何环境中都能工作
-    echo "$TEST_OUTPUT" | grep '"Name"' | sed 's/^.*"Name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*$/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+    # 使用简化的正则表达式，避免依赖[[:space:]]等可能不兼容的特性
+    echo "$TEST_OUTPUT" | grep '"Name"' | sed 's/.*"Name":"\([^"]*\)".*/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
     
     # 显示解析结果
     echo "调试: 解析后的文件列表内容:"

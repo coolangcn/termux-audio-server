@@ -287,12 +287,12 @@ def rclone_sync(filename=None):
 
 def rclone_list_files():
     """列出NAS上的音频文件（不下载）"""
-    app.logger.debug("[RCLONE] 开始获取NAS文件列表")
+    app.logger.info("[RCLONE] 开始获取NAS文件列表")
     try:
         rclone_remote = "synology:download/bilibili/push"
         app.logger.debug(f"[RCLONE] 使用远程路径: {rclone_remote}")
         
-        # 使用rclone lsjson获取文件列表
+        # 使用rclone lsjson获取文件列表 - 添加更详细的日志记录
         cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
         app.logger.debug(f"[RCLONE] 执行命令: {cmd}")
         
@@ -310,34 +310,65 @@ def rclone_list_files():
         
         if result.returncode == 0:
             app.logger.debug("[RCLONE] 命令执行成功，开始解析JSON输出")
+            
+            # 检查输出是否为空
+            if not result.stdout.strip():
+                app.logger.warning("[RCLONE] rclone返回空输出")
+                return [], "rclone returned empty output"
+            
             try:
                 files_data = json.loads(result.stdout)
                 app.logger.debug(f"[RCLONE] JSON解析成功，获取到 {len(files_data)} 个项目")
                 
+                # 确保解析结果是列表
+                if not isinstance(files_data, list):
+                    app.logger.error("[RCLONE] 解析结果不是列表格式")
+                    return [], "Parsed data is not a list"
+                
                 # 统计目录和文件数量
                 dir_count = sum(1 for item in files_data if item.get('IsDir', False))
                 file_count = len(files_data) - dir_count
-                app.logger.debug(f"[RCLONE] 其中包含 {dir_count} 个目录和 {file_count} 个文件")
+                app.logger.info(f"[RCLONE] 获取到 {dir_count} 个目录和 {file_count} 个文件")
                 
-                # 只返回文件名列表
-                file_list = [item['Path'] for item in files_data if not item.get('IsDir', False)]
-                app.logger.debug(f"[RCLONE] 最终返回文件列表，长度: {len(file_list)}")
-                app.logger.debug(f"[RCLONE] 文件列表示例: {file_list[:3] if len(file_list) > 0 else '空列表'}")
+                # 检查文件数据中的关键字段
+                file_list = []
+                for item in files_data:
+                    if not item.get('IsDir', False):
+                        if 'Name' in item:
+                            file_list.append(item['Name'])
+                        else:
+                            app.logger.warning(f"[RCLONE] 文件项缺少'Name'字段: {item}")
+                
+                app.logger.info(f"[RCLONE] 最终返回文件列表，长度: {len(file_list)}")
+                if file_list:
+                    app.logger.debug(f"[RCLONE] 文件列表示例: {file_list[:3]}")
+                else:
+                    app.logger.warning("[RCLONE] 没有找到匹配的音频文件")
+                
                 return file_list, "Success"
+                
             except json.JSONDecodeError as e:
                 app.logger.error(f"[RCLONE] JSON解析失败: {str(e)}")
-                app.logger.debug(f"[RCLONE] 原始输出前200字符: {result.stdout[:200]}")
+                # 记录更多详细信息以便调试
+                app.logger.debug(f"[RCLONE] 原始输出前500字符: {result.stdout[:500]}")
                 return [], f"Failed to parse rclone output: {str(e)}"
             except KeyError as e:
                 app.logger.error(f"[RCLONE] 处理文件数据时缺少关键字段: {str(e)}")
-                return [], f"Key error in rclone data: {str(e)}"
+                # 尝试提供更有用的错误信息
+                return [], f"Key error in rclone data: {str(e)}. Check if 'Name' field exists in all items."
+            except Exception as e:
+                app.logger.error(f"[RCLONE] 处理文件数据时发生意外错误: {str(e)}", exc_info=True)
+                return [], f"Unexpected error processing file data: {str(e)}"
         else:
             app.logger.error(f"[RCLONE] 命令执行失败，返回码: {result.returncode}")
             error_msg = result.stderr.strip() or "No error message provided"
             app.logger.error(f"[RCLONE] 错误详情: {error_msg}")
             return [], f"rclone command failed (code {result.returncode}): {error_msg}"
+    except subprocess.SubprocessError as e:
+        app.logger.error(f"[RCLONE] 执行rclone命令时出错: {str(e)}", exc_info=True)
+        return [], f"Subprocess error: {str(e)}"
     except Exception as e:
-        app.logger.error(f"[RCLONE] 获取文件列表时发生异常: {str(e)}", exc_info=True)
+        app.logger.error(f"[RCLONE] 获取文件列表时发生未预期异常: {str(e)}", exc_info=True)
         return [], f"Exception during rclone operation: {str(e)}"
 
 def rclone_copy_file(remote_path, local_path):
@@ -412,6 +443,9 @@ def auto_cache_worker():
     global auto_cache_running
     app.logger.info("[AUTO_CACHE] 自动缓存线程已启动 (只缓存下一首模式)")
     
+    # 检查间隔时间（秒）
+    check_interval = 600  # 10分钟
+    
     while auto_cache_running:
         try:
             # 获取当前播放的文件信息，以确定下一首需要缓存的文件
@@ -419,7 +453,7 @@ def auto_cache_worker():
             try:
                 # 获取当前播放文件的名称
                 current_filename = get_mpv_property("filename")
-                if current_filename:
+                if current_filename and isinstance(current_filename, str):
                     current_file = os.path.basename(current_filename)
                     app.logger.info(f"[AUTO_CACHE] 当前播放文件: {current_file}")
             except Exception as e:
@@ -428,13 +462,17 @@ def auto_cache_worker():
             if current_file:
                 # 获取NAS文件列表
                 files, message = rclone_list_files()
+                app.logger.debug(f"[AUTO_CACHE] 获取NAS文件列表结果: 长度={len(files) if files else 0}, 消息={message}")
+                
                 if files is not None and len(files) > 0:
                     # 排序文件列表，假设是按字母顺序或时间顺序
                     sorted_files = sorted(files)
+                    app.logger.debug(f"[AUTO_CACHE] 排序后的文件列表: {sorted_files}")
                     
                     # 找到当前文件在列表中的位置
                     try:
                         current_index = sorted_files.index(current_file)
+                        app.logger.debug(f"[AUTO_CACHE] 当前文件索引: {current_index}")
                         
                         # 确定下一首文件（循环播放）
                         if current_index < len(sorted_files) - 1:
@@ -443,10 +481,12 @@ def auto_cache_worker():
                             # 到列表末尾了，下一首是第一个文件
                             next_file = sorted_files[0]
                         
+                        app.logger.info(f"[AUTO_CACHE] 下一首文件: {next_file}")
+                        
                         # 检查下一首文件是否已缓存
                         local_file_path = os.path.join(LOCAL_DIR, next_file)
                         if not os.path.exists(local_file_path):
-                            app.logger.info(f"[AUTO_CACHE] 开始缓存下一首文件: {next_file}")
+                            app.logger.info(f"[AUTO_CACHE] 开始缓存下一首文件: {next_file} -> {local_file_path}")
                             success, msg = rclone_copy_file(next_file, local_file_path)
                             if success:
                                 app.logger.info(f"[AUTO_CACHE] 下一首文件缓存成功: {next_file}")

@@ -57,6 +57,9 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# 输出原始JSON响应以便调试
+echo "调试: rclone原始JSON响应:"
+echo "$TEST_OUTPUT"
 echo "调试: rclone命令执行成功，开始解析文件名..."
 
 # 检查jq是否可用，如果不可用则使用更可靠的grep回退方案

@@ -15,7 +15,7 @@ MPV_OPTIONS="--no-video --input-ipc-server=$MPV_SOCKET_PATH --idle --loop=inf"
 API_SCRIPT=~/termux-audio-server/enhanced_mpv_api.py
 
 API_PORT=5000
-FILE_REGEX='.*\.\(mp4\|mp3\|flac\|ogg\|aac\|m4a\|wav\|webm\)'
+FILE_REGEX='.*\.(mp4|mp3|flac|ogg|aac|m4a|wav|webm)'
 RCLONE_INCLUDES='--include "*.mp4" --include "*.mp3" --include "*.flac" --include "*.ogg" --include "*.aac" --include "*.m4a" --include "*.wav" --include "*.webm"'
 PLAYLIST_FILE=~/mpv_playlist_fixed.txt 
 
@@ -69,7 +69,7 @@ if command -v jq &> /dev/null; then
 else
     echo "⚠️ jq命令未找到，使用兼容版grep/sed回退方案解析JSON..."
     # 使用简化的正则表达式，避免依赖[[:space:]]等可能不兼容的特性
-    echo "$TEST_OUTPUT" | grep '"Name"' | sed 's/.*"Name":"\([^"]*\)".*/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+    echo "$TEST_OUTPUT" | grep '"Name"' | sed -E 's/.*"Name":"([^"]*)".*/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
     
     # 显示解析结果
     echo "调试: 解析后的文件列表内容:"

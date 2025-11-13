@@ -42,13 +42,35 @@ echo "--- 3. 启动 MPV 播放器并监听 IPC Socket ---"
 # 直接从NAS获取文件列表创建播放列表文件
 echo "--- 获取NAS文件列表创建播放列表 ---"
 # 使用rclone lsjson命令获取文件列表并提取文件名
-# 检查jq是否可用，如果不可用则使用grep回退方案
+# 添加调试信息并尝试更可靠的解析方法
+echo "调试: 执行rclone命令获取文件列表..."
+echo "RCLONE_REMOTE: $RCLONE_REMOTE"
+echo "RCLONE_INCLUDES: $RCLONE_INCLUDES"
+echo "FILE_REGEX: $FILE_REGEX"
+echo "PLAYLIST_FILE: $PLAYLIST_FILE"
+
+# 先测试rclone命令是否正常工作
+TEST_OUTPUT=$(eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES 2>&1)
+
+if [ $? -ne 0 ]; then
+    echo "❌ rclone命令执行失败: $TEST_OUTPUT"
+    exit 1
+fi
+
+echo "调试: rclone命令执行成功，开始解析文件名..."
+
+# 检查jq是否可用，如果不可用则使用更可靠的grep回退方案
 if command -v jq &> /dev/null; then
-    eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | jq -r '.[].Name' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+    echo "调试: 使用jq解析JSON..."
+    echo "$TEST_OUTPUT" | jq -r '.[].Name' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
 else
-    echo "⚠️ jq命令未找到，使用grep回退方案解析JSON..."
-    # 使用标准grep代替Perl正则，提高兼容性
-    eval rclone lsjson "$RCLONE_REMOTE" $RCLONE_INCLUDES | grep '"Name":' | sed 's/.*"Name": "\([^"]*\)".*/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+    echo "⚠️ jq命令未找到，使用兼容版grep/sed回退方案解析JSON..."
+    # 使用基本的grep和sed命令，确保在任何环境中都能工作
+    echo "$TEST_OUTPUT" | grep '"Name"' | sed 's/^.*"Name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*$/\1/' | grep -E "$FILE_REGEX" > "$PLAYLIST_FILE"
+    
+    # 显示解析结果
+    echo "调试: 解析后的文件列表内容:"
+    cat "$PLAYLIST_FILE" 2>/dev/null || echo "空文件"
 fi
 
 if [ ! -s "$PLAYLIST_FILE" ]; then

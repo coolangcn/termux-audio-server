@@ -11,6 +11,8 @@ try:
     import threading
     import time
     import logging
+    from datetime import datetime
+    from collections import deque
     from flask import Flask, request, jsonify, render_template_string
     from flask_cors import CORS
     import logging.config
@@ -45,6 +47,18 @@ LOCAL_DIR = "/data/data/com.termux/files/home/nas_audio_cache"
 # 自动缓存线程控制
 auto_cache_thread = None
 auto_cache_running = False
+
+# 时间轴配置
+TIMELINE_DIR = "/data/data/com.termux/files/home/audio_logs/timeline"
+os.makedirs(TIMELINE_DIR, exist_ok=True)
+TIMELINE_FILE = f"{TIMELINE_DIR}/timeline.json"
+TIMELINE_MAX_EVENTS = 500  # 最大事件数量
+
+# 时间轴数据结构
+timeline_events = deque(maxlen=TIMELINE_MAX_EVENTS)
+current_playing_file = ""
+next_playing_file = ""
+timeline_lock = threading.Lock()  # 用于线程安全
 
 # 配置操作日志
 LOG_DIR = "/data/data/com.termux/files/home/audio_logs"
@@ -151,6 +165,107 @@ def send_mpv_command(command):
         error_msg = f"Exception when sending MPV command: {str(e)}"
         operation_logger.error(f"[MPV命令] {error_msg}", exc_info=True)
         return False, error_msg
+
+def add_to_timeline(action, description, details=None):
+    """添加事件到时间轴"""
+    global timeline_events
+    
+    event = {
+        "timestamp": datetime.now().isoformat(),
+        "action": action,
+        "description": description,
+        "details": details or {}
+    }
+    
+    with timeline_lock:
+        timeline_events.append(event)
+        save_timeline()
+    
+    operation_logger.debug(f"[时间轴] 添加事件: {action} - {description}")
+
+
+def save_timeline():
+    """保存时间轴到文件"""
+    try:
+        with timeline_lock:
+            events_list = list(timeline_events)
+        
+        with open(TIMELINE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(events_list, f, ensure_ascii=False, indent=2)
+        
+        operation_logger.debug(f"[时间轴] 已保存到文件，共 {len(events_list)} 个事件")
+    except Exception as e:
+        operation_logger.error(f"[时间轴] 保存失败: {str(e)}", exc_info=True)
+
+
+def load_timeline():
+    """从文件加载时间轴"""
+    global timeline_events
+    
+    try:
+        if os.path.exists(TIMELINE_FILE):
+            with open(TIMELINE_FILE, 'r', encoding='utf-8') as f:
+                events_list = json.load(f)
+                timeline_events = deque(events_list, maxlen=TIMELINE_MAX_EVENTS)
+            
+            operation_logger.debug(f"[时间轴] 从文件加载，共 {len(events_list)} 个事件")
+        else:
+            operation_logger.debug("[时间轴] 时间轴文件不存在，创建新的")
+    except Exception as e:
+        operation_logger.error(f"[时间轴] 加载失败: {str(e)}", exc_info=True)
+        timeline_events = deque(maxlen=TIMELINE_MAX_EVENTS)
+
+
+# 时间轴相关API端点
+@app.route('/timeline', methods=['GET'])
+@log_operation("获取时间轴")
+def get_timeline():
+    """获取时间轴数据"""
+    global timeline_events, current_playing_file, next_playing_file
+    
+    try:
+        with timeline_lock:
+            events_list = list(timeline_events)
+        
+        return jsonify({
+            "events": events_list,
+            "current_playing": current_playing_file,
+            "next_playing": next_playing_file,
+            "total": len(events_list)
+        }), 200
+    except Exception as e:
+        operation_logger.error(f"[时间轴API] 获取时间轴失败: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/timeline/clear', methods=['POST'])
+@log_operation("清空时间轴")
+def clear_timeline():
+    """清空时间轴数据"""
+    global timeline_events
+    
+    try:
+        with timeline_lock:
+            timeline_events.clear()
+            save_timeline()
+        
+        add_to_timeline("system", "时间轴已清空", {})
+        return jsonify({"status": "ok", "message": "时间轴已清空"}), 200
+    except Exception as e:
+        operation_logger.error(f"[时间轴API] 清空时间轴失败: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@app.route('/timeline/status', methods=['GET'])
+@log_operation("获取播放状态(带时间轴更新)")
+def get_status_with_timeline():
+    """获取播放状态并更新时间轴"""
+    # 这里会在后续实现，先添加一个简单的实现
+    try:
+        # 获取状态API的实现会在后续添加
+        return jsonify({"status": "ok", "message": "功能待实现"}), 200
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 def get_mpv_property(property_name):
     """获取MPV属性值"""
@@ -567,6 +682,14 @@ def control_auto_cache():
 def pause_toggle():
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
+        # 获取当前播放文件信息
+        current_file_info = current_playing_file or "未知文件"
+        # 记录到时间轴
+        add_to_timeline(
+            "pause_toggle", 
+            "播放/暂停切换", 
+            {"current_file": current_file_info}
+        )
         return jsonify({"status": "ok", "action": "pause_toggle"}), 200
     return jsonify({"status": "error", "message": message}), 500
 
@@ -574,6 +697,8 @@ def pause_toggle():
 @log_operation("下一首")
 def next_track():
     try:
+        global current_playing_file, next_playing_file
+        
         # 获取当前播放的文件名
         current_file, _ = get_mpv_property("filename")
         if not current_file:
@@ -609,9 +734,23 @@ def next_track():
         if not success:
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
+        # 更新全局变量
+        old_file = current_playing_file
+        next_playing_file = next_file
+        
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 记录到时间轴
+            add_to_timeline(
+                "next_track", 
+                f"切换到下一首: {next_file}", 
+                {
+                    "previous_file": old_file or current_file or "未知文件", 
+                    "next_file": next_file,
+                    "source": "cache" if "exists in cache" in message else "NAS"
+                }
+            )
             return jsonify({
                 "status": "ok", 
                 "action": "next_track",
@@ -661,6 +800,8 @@ def next_track():
 @log_operation("上一首")
 def prev_track():
     try:
+        global current_playing_file, next_playing_file
+        
         # 获取当前播放的文件名
         current_file, _ = get_mpv_property("filename")
         if not current_file:
@@ -696,9 +837,23 @@ def prev_track():
         if not success:
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
+        # 更新全局变量
+        old_file = current_playing_file
+        next_playing_file = prev_file
+        
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 记录到时间轴
+            add_to_timeline(
+                "prev_track", 
+                f"切换到上一首: {prev_file}", 
+                {
+                    "previous_file": old_file or current_file or "未知文件", 
+                    "prev_file": prev_file,
+                    "source": "cache" if "exists in cache" in message else "NAS"
+                }
+            )
             return jsonify({
                 "status": "ok", 
                 "action": "prev_track",
@@ -747,8 +902,23 @@ def prev_track():
 @app.route('/mpv/stop', methods=['GET'])
 @log_operation("停止播放")
 def stop_playback():
+    global current_playing_file
+    
+    # 获取当前播放文件信息
+    file_info = current_playing_file or "未知文件"
+    
     success, message = send_mpv_command(["quit"])
     if success:
+        # 记录到时间轴
+        add_to_timeline(
+            "stop", 
+            "停止播放", 
+            {"stopped_file": file_info}
+        )
+        
+        # 重置当前播放文件
+        current_playing_file = ""
+        
         return jsonify({"status": "ok", "action": "stop"}), 200
     return jsonify({"status": "error", "message": message}), 500
 
@@ -906,6 +1076,7 @@ def build_playlist():
 def get_status():
     """获取播放状态"""
     status = {}
+    global current_playing_file
     
     app.logger.debug("[状态获取] 开始获取MPV播放状态")
     
@@ -947,8 +1118,20 @@ def get_status():
                 app.logger.debug(f"[状态获取] 使用media-title作为文件名: {filename}")
         
         # 确保最终返回的文件名是字符串类型
-        status["current_file"] = filename if isinstance(filename, str) else ""
+        filename = filename if isinstance(filename, str) else ""
+        status["current_file"] = filename
         app.logger.debug(f"[状态获取] 最终current_file值: {status['current_file']}, 类型: {type(status['current_file']).__name__}")
+        
+        # 更新全局当前播放文件并记录时间轴
+        if filename and filename != current_playing_file:
+            old_file = current_playing_file
+            current_playing_file = filename
+            add_to_timeline(
+                "play", 
+                f"开始播放: {filename}", 
+                {"previous_file": old_file, "current_file": filename}
+            )
+            app.logger.info(f"[时间轴] 播放文件变更: 从 '{old_file}' 到 '{filename}'")
         
         # 获取音量
         app.logger.debug("[状态获取] 尝试获取volume属性")
@@ -1611,6 +1794,61 @@ def web_control_panel():
             border: 1px solid #e0e0e0;
         }
         
+        /* 时间轴区域 */
+        .timeline-section {
+            margin-top: 30px;
+            padding: 15px;
+            background-color: #fff8e1;
+            border-radius: 12px;
+            border: 1px solid #ffedcc;
+        }
+        
+        .timeline-section h3 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #d97706;
+        }
+        
+        .timeline-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .timeline-container {
+            background: white;
+            border-radius: 8px;
+            padding: 10px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid #ffedcc;
+        }
+        
+        .timeline-item {
+            padding: 5px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .timeline-item:last-child {
+            border-bottom: none;
+        }
+        
+        .timeline-time {
+            color: #666;
+            font-weight: bold;
+        }
+        
+        .timeline-event {
+            color: #333;
+        }
+        
+        .timeline-file {
+            color: #667eea;
+            font-weight: 500;
+        }
+        
         /* 缓存管理区域 */
         .cache-section {
             margin-top: 30px;
@@ -1710,6 +1948,17 @@ def web_control_panel():
             </div>
             <div class="cache-info" id="cache-info">
                 <div id="cache-content">加载中...</div>
+            </div>
+        </div>
+        
+        <div class="timeline-section">
+            <h3>⏱️ 播放时间轴</h3>
+            <div class="timeline-buttons">
+                <button class="log-btn primary" onclick="loadTimeline()">刷新时间轴</button>
+                <button class="log-btn danger" onclick="clearTimeline()">清空时间轴</button>
+            </div>
+            <div class="timeline-container" id="timeline-container">
+                <div id="timeline-content">加载中...</div>
             </div>
         </div>
         
@@ -1823,9 +2072,10 @@ def web_control_panel():
                     if (data.status === 'error') {
                         alert('操作失败: ' + data.message);
                     } else {
-                        // 操作成功，更新状态和日志
+                        // 操作成功，更新状态、日志和时间轴
                         setTimeout(updateStatus, 500); // 稍后更新状态
                         loadLogs(); // 更新日志
+                        loadTimeline(); // 更新时间轴
                     }
                 })
                 .catch(error => {
@@ -1883,9 +2133,10 @@ def web_control_panel():
                     
                     if (data.status === 'ok') {
                         console.log('播放成功:', data);
-                        // 更新状态和日志
+                        // 更新状态、日志和时间轴
                         setTimeout(updateStatus, 500);
                         loadLogs();
+                        loadTimeline();
                         
                         // 显示成功消息
                         const source = data.source === 'cache' ? '缓存' : 'NAS';
@@ -2180,6 +2431,87 @@ def web_control_panel():
                 });
         }
         
+        // 加载时间轴
+        function loadTimeline() {
+            fetch('/mpv/timeline')
+                .then(response => response.json())
+                .then(data => {
+                    const timelineContent = document.getElementById('timeline-content');
+                    if (data.events && data.events.length > 0) {
+                        // 构建时间轴HTML内容，最新的在顶部
+                        let timelineHtml = '';
+                        data.events.forEach(event => {
+                            // 格式化时间戳
+                            const timestamp = new Date(event.timestamp).toLocaleString();
+                            
+                            // 根据事件类型添加不同的图标
+                            let eventIcon = '•';
+                            if (event.type === 'next_track') eventIcon = '⏭️';
+                            else if (event.type === 'prev_track') eventIcon = '⏮️';
+                            else if (event.type === 'pause_toggle') eventIcon = '⏯️';
+                            else if (event.type === 'stop') eventIcon = '⏹️';
+                            else if (event.type === 'play') eventIcon = '▶️';
+                            
+                            // 构建描述文本
+                            let description = event.description;
+                            if (event.from_file) {
+                                description += ` (从: <span class="timeline-file">${event.from_file}</span>)`;
+                            }
+                            if (event.to_file) {
+                                description += ` (到: <span class="timeline-file">${event.to_file}</span>)`;
+                            }
+                            
+                            timelineHtml += `<div class="timeline-item">
+                                <span class="timeline-time">${timestamp}</span>
+                                <span class="timeline-event"> ${eventIcon} ${description}</span>
+                            </div>`;
+                        });
+                        
+                        timelineContent.innerHTML = timelineHtml;
+                    } else {
+                        timelineContent.innerHTML = '暂无时间轴记录';
+                    }
+                    
+                    // 滚动到底部（最新记录）
+                    const timelineContainer = document.getElementById('timeline-container');
+                    timelineContainer.scrollTop = 0; // 最新的在顶部，所以滚动到顶部
+                })
+                .catch(error => {
+                    console.error('Error loading timeline:', error);
+                    document.getElementById('timeline-content').innerHTML = '加载时间轴失败';
+                });
+        }
+        
+        // 清空时间轴
+        function clearTimeline() {
+            if (confirm('确定要清空所有时间轴记录吗？')) {
+                const timelineContent = document.getElementById('timeline-content');
+                timelineContent.innerHTML = '<span style="color: #666;">正在清空时间轴...</span>';
+                
+                fetch('/mpv/timeline/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        timelineContent.innerHTML = '<span style="color: #28a745;">时间轴已清空</span>';
+                        
+                        // 2秒后重新加载时间轴
+                        setTimeout(loadTimeline, 1000);
+                    } else {
+                        timelineContent.innerHTML = `<span style="color: #ff6b6b;">清空时间轴失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error clearing timeline:', error);
+                    timelineContent.innerHTML = '<span style="color: #ff6b6b;">清空时间轴失败</span>';
+                });
+            }
+        }
+        
         // 初始化
         document.addEventListener('DOMContentLoaded', function() {
             // 立即初始化状态显示
@@ -2194,6 +2526,7 @@ def web_control_panel():
             getAllFiles();
             loadLogs();
             getCacheInfo(); // 获取缓存信息
+            loadTimeline(); // 加载时间轴
             
             // 每5秒更新一次状态
             setInterval(updateStatus, 5000);
@@ -2201,6 +2534,8 @@ def web_control_panel():
             setInterval(loadLogs, 10000);
             // 每30秒更新一次缓存信息
             setInterval(getCacheInfo, 30000);
+            // 每3秒更新一次时间轴，实现实时刷新
+            setInterval(loadTimeline, 3000);
             
             // 每3秒检查一次是否需要自动播放下一首
             setInterval(checkAndAutoPlayNext, 3000);

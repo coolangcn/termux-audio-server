@@ -101,11 +101,14 @@ if [ "$MPV_CAN_RUN" -eq 1 ]; then
 fi
 
 if [ "$MPV_CAN_RUN" -eq 1 ]; then
-    mpv --playlist="$PLAYLIST_FILE" $MPV_OPTIONS > ~/mpv_startup.log 2>&1 &
+    SOCKET_DIR=$(dirname "$MPV_SOCKET_PATH")
+    mkdir -p "$SOCKET_DIR"
+    rm -f "$MPV_SOCKET_PATH" 2>/dev/null
+    mpv $MPV_OPTIONS > ~/mpv_startup.log 2>&1 &
     MPV_PID=$!
     sleep 1
     if kill -0 "$MPV_PID" 2>/dev/null; then
-        echo "✅ MPV (PID $MPV_PID) 已在后台启动，将播放 $LOCAL_DIR 下的文件列表。"
+        echo "✅ MPV (PID $MPV_PID) 已在后台启动（空闲模式，等待API控制）。"
     else
         echo "❌ MPV 进程启动失败"
         MPV_CAN_RUN=0

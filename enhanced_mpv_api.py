@@ -94,13 +94,31 @@ def log_operation(operation):
         return wrapper
     return decorator
 
+MPV_RUNTIME_ERROR = None
+try:
+    import shutil, subprocess
+    mpv_bin = shutil.which("mpv")
+    if not mpv_bin:
+        MPV_RUNTIME_ERROR = "mpv not installed"
+        operation_logger.error("mpv not installed")
+    else:
+        ver = subprocess.run([mpv_bin, "--version"], capture_output=True, text=True)
+        if ver.returncode != 0:
+            err = (ver.stderr or ver.stdout).strip()
+            MPV_RUNTIME_ERROR = err.splitlines()[0] if err else "mpv runtime error"
+            operation_logger.error(f"MPV runtime check failed: {MPV_RUNTIME_ERROR}")
+except Exception as _e:
+    MPV_RUNTIME_ERROR = str(_e)
+    operation_logger.error(f"MPV preflight error: {MPV_RUNTIME_ERROR}")
+
 def send_mpv_command(command):
     """使用 socat 向 mpv socket 发送命令"""
     operation_logger.debug(f"[MPV命令] 尝试发送命令: {command}")
     
     # 检查socket文件是否存在
     if not os.path.exists(MPV_SOCKET_PATH):
-        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
+        extra = f" ({MPV_RUNTIME_ERROR})" if MPV_RUNTIME_ERROR else ""
+        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?{extra}"
         operation_logger.error(f"[MPV命令] {error_msg}")
         return False, error_msg
     
@@ -140,7 +158,8 @@ def get_mpv_property(property_name):
     
     # 检查socket文件是否存在
     if not os.path.exists(MPV_SOCKET_PATH):
-        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?"
+        extra = f" ({MPV_RUNTIME_ERROR})" if MPV_RUNTIME_ERROR else ""
+        error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?{extra}"
         operation_logger.error(f"[MPV属性] {error_msg}")
         return None, error_msg
     
@@ -960,6 +979,8 @@ def get_status():
             status["progress"] = round(progress, 2)
             app.logger.debug(f"[状态获取] 计算播放进度: {status['progress']}%")
         
+        status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
+        status["mpv_error"] = MPV_RUNTIME_ERROR or ""
         app.logger.debug(f"[状态获取] 完整状态数据: {json.dumps(status, ensure_ascii=False)}")
         return jsonify(status), 200
     except Exception as e:

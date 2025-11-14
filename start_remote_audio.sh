@@ -82,28 +82,59 @@ if [ ! -s "$PLAYLIST_FILE" ]; then
     exit 1
 fi
 
-# 在后台启动 mpv
-mpv --playlist="$PLAYLIST_FILE" $MPV_OPTIONS & 
-MPV_PID=$!
-echo "✅ MPV (PID $MPV_PID) 已在后台启动，将播放 $LOCAL_DIR 下的文件列表。"
+MPV_CAN_RUN=1
+if ! command -v mpv >/dev/null 2>&1; then
+    echo "❌ 未检测到 mpv，请运行: pkg install mpv"
+    MPV_CAN_RUN=0
+fi
+if ! command -v socat >/dev/null 2>&1; then
+    echo "⚠️ 未检测到 socat，建议运行: pkg install socat"
+fi
+if [ "$MPV_CAN_RUN" -eq 1 ]; then
+    mpv --version >/dev/null 2>~/mpv_version_check.err
+    if [ $? -ne 0 ]; then
+        echo "❌ MPV 无法运行，可能缺少依赖"
+        cat ~/mpv_version_check.err
+        echo "修复建议: pkg upgrade && pkg install ffmpeg mpv"
+        MPV_CAN_RUN=0
+    fi
+fi
+
+if [ "$MPV_CAN_RUN" -eq 1 ]; then
+    mpv --playlist="$PLAYLIST_FILE" $MPV_OPTIONS > ~/mpv_startup.log 2>&1 &
+    MPV_PID=$!
+    sleep 1
+    if kill -0 "$MPV_PID" 2>/dev/null; then
+        echo "✅ MPV (PID $MPV_PID) 已在后台启动，将播放 $LOCAL_DIR 下的文件列表。"
+    else
+        echo "❌ MPV 进程启动失败"
+        MPV_CAN_RUN=0
+    fi
+else
+    echo "❌ 跳过启动MPV，依赖未就绪"
+fi
 
 # 关键修复：等待 Socket 创建并设置权限
 echo "⏳ 正在设置 Socket 权限..."
-# 等待 Socket 文件出现，最多等待 5 秒
-for i in {1..5}; do
+if [ "$MPV_CAN_RUN" -eq 1 ]; then
+    for i in {1..5}; do
+        if [ -S "$MPV_SOCKET_PATH" ]; then
+            break
+        fi
+        sleep 1
+    done
     if [ -S "$MPV_SOCKET_PATH" ]; then
-        break
+        chmod 666 "$MPV_SOCKET_PATH"
+        echo "✅ Socket 权限已设置为 666。"
+    else
+        echo "❌ 错误：MPV Socket 文件未创建！API 服务可能无法连接。"
+        if [ -f ~/mpv_startup.log ]; then
+            echo "—— MPV 启动日志 ——"
+            tail -n 50 ~/mpv_startup.log
+        fi
     fi
-    sleep 1
-done
-
-if [ -S "$MPV_SOCKET_PATH" ]; then
-    # 强制设置权限为 666 (所有用户可读写)，允许 Flask/Python 进程连接
-    chmod 666 "$MPV_SOCKET_PATH"
-    echo "✅ Socket 权限已设置为 666。"
 else
-    echo "❌ 错误：MPV Socket 文件未创建！API 服务可能无法连接。"
-    # 如果 Socket 未创建，Flask 必然失败，但我们让脚本继续运行以诊断问题
+    echo "❌ 错误：MPV未运行或依赖缺失，Socket不可用。"
 fi
 
 # --- 4. 启动 Flask API 服务 ---
@@ -131,7 +162,8 @@ curl -X POST "http://localhost:$API_PORT/cache/auto?action=start" >/dev/null 2>&
 echo "✅ 自动缓存服务已启动，将每30分钟检查一次新文件。"
 
 # --- 6. 最终提示 ---
-IP_ADDRESS=$(ifconfig wlan0 | grep -oP 'inet \K[\d.]+' || echo '127.0.0.1')
+IP_ADDRESS=$( (ip -4 addr show wlan0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' || ifconfig wlan0 2>/dev/null | grep -oP 'inet \K[\d.]+' ) | head -n 1 )
+[ -z "$IP_ADDRESS" ] && IP_ADDRESS="127.0.0.1"
 
 echo "--------------------------------------------------------"
 echo "🎉 远程音频控制系统已启动！"

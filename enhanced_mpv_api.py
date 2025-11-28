@@ -1004,17 +1004,21 @@ def pause_toggle():
     # 检查当前是否处于空闲状态或未播放文件
     idle, _ = get_mpv_property("idle-active")
     filename, _ = get_mpv_property("filename")
+    pause_state, _ = get_mpv_property("pause")
     
     # 使用全局变量作为后备检查
     global current_playing_file
     is_really_playing = (filename and filename.strip()) or (current_playing_file and current_playing_file.strip())
     
-    # 只有在明确是空闲状态且确实没有在播放文件时，才执行下一首
-    # 如果获取属性失败但我们记录中正在播放，优先尝试发送暂停命令
-    if idle is True and not is_really_playing:
-        operation_logger.info("检测到MPV空闲且无文件播放，'暂停'按钮触发播放操作")
+    # 改进判断逻辑：
+    # 1. 如果没有播放文件，无论MPV状态如何，都执行下一首
+    # 2. 如果MPV处于空闲状态，执行下一首
+    # 3. 如果无法获取MPV状态且没有播放文件，执行下一首
+    if not is_really_playing:
+        operation_logger.info("检测到无文件播放，'暂停'按钮触发播放操作")
         return next_track()
-        
+    
+    # 如果有播放文件，尝试发送暂停命令
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息
@@ -1026,7 +1030,10 @@ def pause_toggle():
             {"current_file": current_file_info}
         )
         return jsonify({"status": "ok", "action": "pause_toggle"}), 200
-    return jsonify({"status": "error", "message": message}), 500
+    
+    # 如果发送暂停命令失败，尝试直接播放下一首
+    operation_logger.warning("发送暂停命令失败，尝试直接播放下一首")
+    return next_track()
 
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")

@@ -1001,52 +1001,46 @@ def get_download_progress(task_id):
 @app.route('/mpv/pause', methods=['GET'])
 @log_operation("播放/暂停切换")
 def pause_toggle():
-    # 检查当前是否处于空闲状态或未播放文件
-    idle, _ = get_mpv_property("idle-active")
+    # 检查当前状态
     filename, _ = get_mpv_property("filename")
     pause_state, _ = get_mpv_property("pause")
+    idle, _ = get_mpv_property("idle-active")
     
     # 使用全局变量作为后备检查
     global current_playing_file
     
-    # 改进播放状态判断逻辑：
-    # 1. 检查filename是否有值
-    # 2. 检查current_playing_file是否有值
-    # 3. 检查idle状态，如果不是空闲状态，说明正在播放
-    has_filename = filename and filename.strip()
-    has_global_file = current_playing_file and current_playing_file.strip()
-    not_idle = not idle
+    # 简化播放状态判断：
+    # 1. 如果filename有值，说明正在播放或暂停
+    # 2. 如果current_playing_file有值，说明之前播放过
+    has_playing_file = (filename and filename.strip()) or (current_playing_file and current_playing_file.strip())
     
-    # 只要满足以下条件之一，就认为正在播放：
-    # 1. 有文件名
-    # 2. 全局记录有播放文件
-    # 3. MPV不是空闲状态
-    is_really_playing = has_filename or has_global_file or not_idle
+    operation_logger.debug(f"[播放控制] 状态检查: filename={filename}, current_playing_file={current_playing_file}, pause_state={pause_state}, idle={idle}, has_playing_file={has_playing_file}")
     
-    operation_logger.debug(f"[播放控制] 播放状态检查: has_filename={has_filename}, has_global_file={has_global_file}, not_idle={not_idle}, is_really_playing={is_really_playing}")
-    
-    # 如果确实没有播放文件，执行下一首
-    if not is_really_playing:
-        operation_logger.info("检测到无文件播放，'暂停'按钮触发播放操作")
+    # 核心逻辑：
+    # 1. 如果没有播放文件，直接播放下一首
+    # 2. 如果有播放文件，切换播放/暂停状态
+    if not has_playing_file:
+        # 情况1：没有播放文件，直接播放下一首
+        operation_logger.info("[播放控制] 没有播放文件，触发播放下一首")
         return next_track()
-    
-    # 如果有播放文件，尝试发送暂停命令
-    operation_logger.info("检测到有文件播放，'暂停'按钮触发播放/暂停切换")
-    success, message = send_mpv_command(["cycle", "pause"])
-    if success:
-        # 获取当前播放文件信息
-        current_file_info = filename or current_playing_file or "未知文件"
-        # 记录到时间轴
-        add_to_timeline(
-            "pause_toggle", 
-            "播放/暂停切换", 
-            {"current_file": current_file_info}
-        )
-        return jsonify({"status": "ok", "action": "pause_toggle"}), 200
-    
-    # 如果发送暂停命令失败，返回错误信息，不再尝试播放下一首
-    operation_logger.warning(f"发送暂停命令失败: {message}")
-    return jsonify({"status": "error", "message": message}), 500
+    else:
+        # 情况2：有播放文件，切换播放/暂停状态
+        operation_logger.info("[播放控制] 有播放文件，切换播放/暂停状态")
+        success, message = send_mpv_command(["cycle", "pause"])
+        if success:
+            # 获取当前播放文件信息
+            current_file_info = filename or current_playing_file or "未知文件"
+            # 记录到时间轴
+            add_to_timeline(
+                "pause_toggle", 
+                "播放/暂停切换", 
+                {"current_file": current_file_info, "pause_state": not pause_state}
+            )
+            return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
+        else:
+            # 如果发送命令失败，返回错误信息
+            operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")
+            return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")

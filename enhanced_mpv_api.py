@@ -1303,6 +1303,14 @@ def get_status():
         status["paused"] = pause_state if pause_state is not None else False
         if pause_state is None:
             app.logger.warning(f"[状态获取] 获取pause状态失败: {pause_msg}")
+            
+        # 获取 idle-active 状态 (是否空闲)
+        idle_active, _ = get_mpv_property("idle-active")
+        status["idle_active"] = idle_active if idle_active is not None else False
+        
+        # 获取 eof-reached 状态 (是否播放结束)
+        eof_reached, _ = get_mpv_property("eof-reached")
+        status["eof_reached"] = eof_reached if eof_reached is not None else False
         
         # 获取当前播放文件 - 尝试多种属性
         app.logger.debug("[状态获取] 尝试获取filename属性")

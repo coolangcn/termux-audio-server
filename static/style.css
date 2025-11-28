@@ -870,8 +870,8 @@ body {
         width: 100%;
         -webkit-appearance: none;
         appearance: none;
-        height: 6px;
-        background: rgba(255, 255, 255, 0.2);
+        height: 8px;
+        background: rgba(255, 255, 255, 0.4);
         border-radius: var(--radius-full);
         outline: none;
         background-image: var(--accent-gradient);

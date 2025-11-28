@@ -1008,17 +1008,30 @@ def pause_toggle():
     
     # 使用全局变量作为后备检查
     global current_playing_file
-    is_really_playing = (filename and filename.strip()) or (current_playing_file and current_playing_file.strip())
     
-    # 改进判断逻辑：
-    # 1. 如果没有播放文件，无论MPV状态如何，都执行下一首
-    # 2. 如果MPV处于空闲状态，执行下一首
-    # 3. 如果无法获取MPV状态且没有播放文件，执行下一首
+    # 改进播放状态判断逻辑：
+    # 1. 检查filename是否有值
+    # 2. 检查current_playing_file是否有值
+    # 3. 检查idle状态，如果不是空闲状态，说明正在播放
+    has_filename = filename and filename.strip()
+    has_global_file = current_playing_file and current_playing_file.strip()
+    not_idle = not idle
+    
+    # 只要满足以下条件之一，就认为正在播放：
+    # 1. 有文件名
+    # 2. 全局记录有播放文件
+    # 3. MPV不是空闲状态
+    is_really_playing = has_filename or has_global_file or not_idle
+    
+    operation_logger.debug(f"[播放控制] 播放状态检查: has_filename={has_filename}, has_global_file={has_global_file}, not_idle={not_idle}, is_really_playing={is_really_playing}")
+    
+    # 如果确实没有播放文件，执行下一首
     if not is_really_playing:
         operation_logger.info("检测到无文件播放，'暂停'按钮触发播放操作")
         return next_track()
     
     # 如果有播放文件，尝试发送暂停命令
+    operation_logger.info("检测到有文件播放，'暂停'按钮触发播放/暂停切换")
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息
@@ -1031,9 +1044,9 @@ def pause_toggle():
         )
         return jsonify({"status": "ok", "action": "pause_toggle"}), 200
     
-    # 如果发送暂停命令失败，尝试直接播放下一首
-    operation_logger.warning("发送暂停命令失败，尝试直接播放下一首")
-    return next_track()
+    # 如果发送暂停命令失败，返回错误信息，不再尝试播放下一首
+    operation_logger.warning(f"发送暂停命令失败: {message}")
+    return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")

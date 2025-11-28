@@ -30,6 +30,18 @@
                 <div>🎵 当前播放</div>
                 <div id="current-file">无</div>
                 <div>播放状态: <span id="play-status">未播放</span></div>
+
+                <!-- 播放进度条 -->
+                <div class="progress-control">
+                    <div class="time-labels">
+                        <span id="current-time">00:00</span>
+                        <span id="total-time">00:00</span>
+                    </div>
+                    <div class="progress-slider-container">
+                        <input type="range" id="progress-slider" class="progress-slider" min="0" max="100" value="0"
+                            step="0.1">
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -158,9 +170,95 @@
                         slider.value = volumeValue;
                     }
                     document.getElementById('volume-value').textContent = volumeValue + '%';
+
+                    // 更新进度条
+                    updateProgressDisplay(data.position, data.duration);
                 })
                 .catch(function (error) {
                     console.error('Error updating status:', error);
+                });
+        }
+
+        // 进度条相关变量
+        let isSeeking = false;
+        let audioDuration = 0;
+
+        // 格式化时间 (秒 -> MM:SS)
+        function formatTime(seconds) {
+            if (!seconds || isNaN(seconds)) return "00:00";
+            const m = Math.floor(seconds / 60);
+            const s = Math.floor(seconds % 60);
+            return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        }
+
+        // 更新进度显示
+        function updateProgressDisplay(position, duration) {
+            // 更新总时长
+            audioDuration = duration || 0;
+            document.getElementById('total-time').textContent = formatTime(audioDuration);
+
+            // 如果用户正在拖动进度条，不更新滑块位置和当前时间显示
+            // 以免滑块跳动影响操作
+            if (isSeeking) return;
+
+            const currentPos = position || 0;
+            document.getElementById('current-time').textContent = formatTime(currentPos);
+
+            const slider = document.getElementById('progress-slider');
+            if (audioDuration > 0) {
+                slider.max = audioDuration;
+                slider.value = currentPos;
+                // 更新进度条背景填充效果
+                const percent = (currentPos / audioDuration) * 100;
+                slider.style.backgroundSize = `${percent}% 100%`;
+            } else {
+                slider.value = 0;
+                slider.style.backgroundSize = `0% 100%`;
+            }
+        }
+
+        // 初始化进度条事件
+        function initProgressControl() {
+            const slider = document.getElementById('progress-slider');
+
+            // 开始拖动
+            slider.addEventListener('mousedown', () => { isSeeking = true; });
+            slider.addEventListener('touchstart', () => { isSeeking = true; });
+
+            // 拖动中：实时更新时间显示
+            slider.addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                document.getElementById('current-time').textContent = formatTime(val);
+                // 实时更新背景填充
+                const percent = (val / slider.max) * 100;
+                slider.style.backgroundSize = `${percent}% 100%`;
+            });
+
+            // 拖动结束：发送seek命令
+            const endSeek = (e) => {
+                if (!isSeeking) return;
+                isSeeking = false;
+                const val = parseFloat(slider.value);
+                seek(val);
+            };
+
+            slider.addEventListener('change', endSeek);
+            slider.addEventListener('mouseup', endSeek);
+            slider.addEventListener('touchend', endSeek);
+        }
+
+        // 发送seek命令
+        function seek(position) {
+            console.log('Seeking to:', position);
+            fetch(`/mpv/seek?position=${position}`)
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Seek result:', data);
+                    // 立即更新一次状态
+                    setTimeout(updateStatus, 100);
+                })
+                .catch(error => {
+                    console.error('Seek error:', error);
                 });
         }
 
@@ -507,7 +605,7 @@
             // document.getElementById('volume-slider').value = value; // 不用设置自己
 
             // 发送API请求设置音量
-            fetch('/mpv/volume/set?value=' + value)
+            fetch(`/mpv/volume/set?value=' + value)
                 .then(function (response) { return response.json(); })
                 .then(function (data) {
                     console.log('音量设置成功:', data);
@@ -552,119 +650,119 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'ok') {
-                        let infoHtml = `<strong>缓存信息:</strong><br>`;
-                        infoHtml += `总大小: ${data.total_size}<br>`;
-                        infoHtml += `文件数量: ${data.file_count}<br>`;
+                        let infoHtml = `< strong > 缓存信息:</strong > <br>`;
+                infoHtml += `总大小: ${data.total_size}<br>`;
+                    infoHtml += `文件数量: ${data.file_count}<br>`;
                         infoHtml += `缓存目录: ${data.cache_dir}<br>`;
 
                         if (data.files && data.files.length > 0) {
-                            infoHtml += `<br><strong>缓存文件列表:</strong><br>`;
+                                infoHtml += `<br><strong>缓存文件列表:</strong><br>`;
                             data.files.forEach(file => {
                                 infoHtml += `• ${file.name} (${file.size}, ${file.modified})<br>`;
                             });
                         } else {
-                            infoHtml += `<br><em>暂无缓存文件</em>`;
+                                infoHtml += `<br><em>暂无缓存文件</em>`;
                         }
 
-                        cacheContent.innerHTML = infoHtml;
+                            cacheContent.innerHTML = infoHtml;
                     } else {
-                        cacheContent.innerHTML = `<span style="color: #ff6b6b;">获取缓存信息失败: ${data.message}</span>`;
+                                cacheContent.innerHTML = `<span style="color: #ff6b6b;">获取缓存信息失败: ${data.message}</span>`;
                     }
                 })
                 .catch(error => {
-                    console.error('Error getting cache info:', error);
-                    cacheContent.innerHTML = '<span style="color: #ff6b6b;">获取缓存信息失败</span>';
+                                console.error('Error getting cache info:', error);
+                            cacheContent.innerHTML = '<span style="color: #ff6b6b;">获取缓存信息失败</span>';
                 });
         }
 
-        function clearCache() {
+                            function clearCache() {
             if (confirm('确定要清空所有缓存文件吗？')) {
                 const cacheContent = document.getElementById('cache-content');
-                cacheContent.innerHTML = '<span style="color: #666;">正在清空缓存...</span>';
+                            cacheContent.innerHTML = '<span style="color: #666;">正在清空缓存...</span>';
 
-                fetch('/cache/clear', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
+                            fetch('/cache/clear', {
+                                method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
                     }
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'ok') {
-                            cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.removed_count} 个文件，释放了 ${data.removed_size_mb} MB</span>`;
+                                cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.removed_count} 个文件，释放了 ${data.removed_size_mb} MB</span>`;
 
                             // 2秒后重新获取缓存信息
                             setTimeout(function () {
                                 getCacheInfo();
                             }, 2000);
                         } else {
-                            cacheContent.innerHTML = `<span style="color: #ff6b6b;">清空缓存失败: ${data.message}</span>`;
+                                cacheContent.innerHTML = `<span style="color: #ff6b6b;">清空缓存失败: ${data.message}</span>`;
                         }
                     })
                     .catch(error => {
-                        console.error('Error clearing cache:', error);
-                        cacheContent.innerHTML = '<span style="color: #ff6b6b;">清空缓存失败</span>';
+                                console.error('Error clearing cache:', error);
+                            cacheContent.innerHTML = '<span style="color: #ff6b6b;">清空缓存失败</span>';
                     });
             }
         }
 
-        function clearLogs() {
+                            function clearLogs() {
             if (confirm('确定要清空所有操作日志吗？')) {
                 // 显示清空中状态
                 const logContent = document.getElementById('log-content');
-                logContent.innerHTML = '<span style="color: #666;">正在清空日志...</span>';
+                            logContent.innerHTML = '<span style="color: #666;">正在清空日志...</span>';
 
-                // 使用更可靠的fetch调用方式，添加错误处理和超时
-                var timeoutId = setTimeout(function () {
-                    logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志请求超时，请稍后重试</span>';
-                    setTimeout(function () {
-                        loadLogs(); // 重新加载日志
+                            // 使用更可靠的fetch调用方式，添加错误处理和超时
+                            var timeoutId = setTimeout(function () {
+                                logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志请求超时，请稍后重试</span>';
+                            setTimeout(function () {
+                                loadLogs(); // 重新加载日志
                     }, 2000);
                 }, 8000);
 
-                fetch('/logs/clear', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
+                            fetch('/logs/clear', {
+                                method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
                     },
-                    timeout: 7000 // 设置7秒超时
+                            timeout: 7000 // 设置7秒超时
                 })
-                    .then(function (response) {
-                        clearTimeout(timeoutId);
-                        if (!response.ok) {
+                            .then(function (response) {
+                                clearTimeout(timeoutId);
+                            if (!response.ok) {
                             throw new Error('响应状态: ' + response.status);
                         }
-                        return response.json();
+                            return response.json();
                     })
-                    .then(function (data) {
-                        console.log('日志清空成功:', data);
-                        // 清空后立即更新UI
-                        logContent.innerHTML = '<span style="color: #28a745;">日志已清空</span>';
+                            .then(function (data) {
+                                console.log('日志清空成功:', data);
+                            // 清空后立即更新UI
+                            logContent.innerHTML = '<span style="color: #28a745;">日志已清空</span>';
 
-                        // 显示成功消息，2秒后重新加载日志
-                        setTimeout(function () {
-                            loadLogs();
+                            // 显示成功消息，2秒后重新加载日志
+                            setTimeout(function () {
+                                loadLogs();
                         }, 2000);
                     })
-                    .catch(function (error) {
-                        clearTimeout(timeoutId);
-                        console.error('清空日志失败:', error);
-                        logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志失败: ' + error.message + '</span>';
+                            .catch(function (error) {
+                                clearTimeout(timeoutId);
+                            console.error('清空日志失败:', error);
+                            logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志失败: ' + error.message + '</span>';
 
-                        // 3秒后重新加载日志
-                        setTimeout(function () {
-                            loadLogs();
+                            // 3秒后重新加载日志
+                            setTimeout(function () {
+                                loadLogs();
                         }, 3000);
                     });
             }
         }
 
-        // 自动播放下一首功能
-        let lastFileCount = 0;
-        let lastCurrentFile = null; // 记录上一首播放的文件
-        let isPlaying = false; // 记录播放状态
+                            // 自动播放下一首功能
+                            let lastFileCount = 0;
+                            let lastCurrentFile = null; // 记录上一首播放的文件
+                            let isPlaying = false; // 记录播放状态
 
-        function checkAndAutoPlayNext() {
+                            function checkAndAutoPlayNext() {
             // 获取当前播放状态
             return fetch('/mpv/status')
                 .then(response => response.json())
@@ -673,8 +771,8 @@
 
                     // 确保current_file是字符串类型
                     const currentFile = typeof data.current_file === 'string' ? data.current_file : '';
-                    const hasCurrentFile = currentFile && currentFile.trim() !== '';
-                    const currentIsPlaying = hasCurrentFile && !data.paused;
+                            const hasCurrentFile = currentFile && currentFile.trim() !== '';
+                            const currentIsPlaying = hasCurrentFile && !data.paused;
 
                     // 检测播放结束的三种方式：
                     // 1. 播放位置接近文件末尾（相差不到2秒，更宽松的条件）
@@ -682,23 +780,23 @@
                     // 3. 文件改变了，但上一个文件是存在的（可能是手动切换的）
                     const isNearEndOfPlayback = hasCurrentFile && data.position > 0 &&
                         data.duration > 0 &&
-                        (data.duration - data.position) < 2.0; // 小于2秒时认为即将结束
+                            (data.duration - data.position) < 2.0; // 小于2秒时认为即将结束
 
-                    const isFileEnded = !hasCurrentFile && lastCurrentFile && isPlaying;
-                    const isFileChanged = hasCurrentFile && lastCurrentFile && currentFile !== lastCurrentFile;
+                            const isFileEnded = !hasCurrentFile && lastCurrentFile && isPlaying;
+                            const isFileChanged = hasCurrentFile && lastCurrentFile && currentFile !== lastCurrentFile;
 
-                    if (isNearEndOfPlayback || isFileEnded) {
-                        console.log('检测到播放结束或接近结束，当前状态:', { isNearEndOfPlayback, isFileEnded, currentFile, lastFile: lastCurrentFile, position: data.position, duration: data.duration });
+                            if (isNearEndOfPlayback || isFileEnded) {
+                                console.log('检测到播放结束或接近结束，当前状态:', { isNearEndOfPlayback, isFileEnded, currentFile, lastFile: lastCurrentFile, position: data.position, duration: data.duration });
 
-                        // 直接调用后端的next_track API，与手动点击下一首按钮保持一致
-                        fetch('/mpv/next')
+                            // 直接调用后端的next_track API，与手动点击下一首按钮保持一致
+                            fetch('/mpv/next')
                             .then(response => response.json())
                             .then(nextData => {
                                 if (nextData.status === 'ok') {
-                                    console.log('自动播放下一首成功:', nextData.next_file);
-                                    showNotification(`自动播放下一首: ${nextData.next_file}`);
+                                console.log('自动播放下一首成功:', nextData.next_file);
+                            showNotification(`自动播放下一首: ${nextData.next_file}`);
                                 } else {
-                                    console.error('自动播放下一首失败:', nextData.message);
+                                console.error('自动播放下一首失败:', nextData.message);
                                 }
                             })
                             .catch(error => {
@@ -706,43 +804,43 @@
                             });
                     }
 
-                    // 更新状态记录
-                    lastCurrentFile = hasCurrentFile ? currentFile : null;
-                    isPlaying = currentIsPlaying;
+                            // 更新状态记录
+                            lastCurrentFile = hasCurrentFile ? currentFile : null;
+                            isPlaying = currentIsPlaying;
                 })
                 .catch(error => {
-                    console.error('获取播放状态失败:', error);
+                                console.error('获取播放状态失败:', error);
                 });
         }
 
-        // 定时更新文件列表功能
-        function checkAndUpdateFileList() {
+                            // 定时更新文件列表功能
+                            function checkAndUpdateFileList() {
             return fetch('/files')
                 .then(response => response.json())
                 .then(data => {
                     if (data.files && data.files.length !== lastFileCount) {
-                        console.log('检测到文件列表变化，从', lastFileCount, '更新到', data.files.length);
-                        lastFileCount = data.files.length;
-                        updateFileList(data.files);
+                                console.log('检测到文件列表变化，从', lastFileCount, '更新到', data.files.length);
+                            lastFileCount = data.files.length;
+                            updateFileList(data.files);
 
-                        // 显示更新通知
-                        showNotification(`文件列表已更新，共 ${data.files.length} 首歌曲`);
+                            // 显示更新通知
+                            showNotification(`文件列表已更新，共 ${data.files.length} 首歌曲`);
                     }
                 })
                 .catch(error => {
-                    console.error('更新文件列表失败:', error);
+                                console.error('更新文件列表失败:', error);
                 });
         }
 
-        // 加载时间轴
-        function loadTimeline() {
+                            // 加载时间轴
+                            function loadTimeline() {
             return fetch('/mpv/timeline')
                 .then(response => response.json())
                 .then(data => {
                     const timelineContent = document.getElementById('timeline-content');
                     if (data.events && data.events.length > 0) {
-                        // 构建时间轴HTML内容，最新的在顶部
-                        let timelineHtml = '';
+                                // 构建时间轴HTML内容，最新的在顶部
+                                let timelineHtml = '';
                         data.events.forEach(event => {
                             // 格式化时间戳
                             const timestamp = new Date(event.timestamp).toLocaleString();
@@ -770,130 +868,131 @@
                             </div>`;
                         });
 
-                        timelineContent.innerHTML = timelineHtml;
+                            timelineContent.innerHTML = timelineHtml;
                     } else {
-                        timelineContent.innerHTML = '暂无时间轴记录';
+                                timelineContent.innerHTML = '暂无时间轴记录';
                     }
 
-                    // 滚动到底部（最新记录）
-                    const timelineContainer = document.getElementById('timeline-container');
-                    timelineContainer.scrollTop = 0; // 最新的在顶部，所以滚动到顶部
+                            // 滚动到底部（最新记录）
+                            const timelineContainer = document.getElementById('timeline-container');
+                            timelineContainer.scrollTop = 0; // 最新的在顶部，所以滚动到顶部
                 })
                 .catch(error => {
-                    console.error('Error loading timeline:', error);
-                    document.getElementById('timeline-content').innerHTML = '加载时间轴失败';
+                                console.error('Error loading timeline:', error);
+                            document.getElementById('timeline-content').innerHTML = '加载时间轴失败';
                 });
         }
 
-        // 清空时间轴
-        function clearTimeline() {
+                            // 清空时间轴
+                            function clearTimeline() {
             if (confirm('确定要清空所有时间轴记录吗？')) {
                 const timelineContent = document.getElementById('timeline-content');
-                timelineContent.innerHTML = '<span style="color: #666;">正在清空时间轴...</span>';
+                            timelineContent.innerHTML = '<span style="color: #666;">正在清空时间轴...</span>';
 
-                fetch('/mpv/timeline/clear', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
+                            fetch('/mpv/timeline/clear', {
+                                method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
                     }
                 })
                     .then(response => response.json())
                     .then(data => {
                         if (data.status === 'ok') {
-                            timelineContent.innerHTML = '<span style="color: #28a745;">时间轴已清空</span>';
+                                timelineContent.innerHTML = '<span style="color: #28a745;">时间轴已清空</span>';
 
                             // 2秒后重新加载时间轴
                             setTimeout(loadTimeline, 1000);
                         } else {
-                            timelineContent.innerHTML = `<span style="color: #ff6b6b;">清空时间轴失败: ${data.message}</span>`;
+                                timelineContent.innerHTML = `<span style="color: #ff6b6b;">清空时间轴失败: ${data.message}</span>`;
                         }
                     })
                     .catch(error => {
-                        console.error('Error clearing timeline:', error);
-                        timelineContent.innerHTML = '<span style="color: #ff6b6b;">清空时间轴失败</span>';
+                                console.error('Error clearing timeline:', error);
+                            timelineContent.innerHTML = '<span style="color: #ff6b6b;">清空时间轴失败</span>';
                     });
             }
         }
 
-        // 初始化
-        document.addEventListener('DOMContentLoaded', function () {
-            // 立即初始化状态显示
-            document.getElementById('current-file').textContent = '无';
-            document.getElementById('play-status').textContent = '未播放';
-            document.getElementById('volume-value').textContent = '50%';
-            document.getElementById('volume-slider').value = '50';
+                            // 初始化
+                            document.addEventListener('DOMContentLoaded', function () {
+                                // 立即初始化状态显示
+                                document.getElementById('current-file').textContent = '无';
+                            document.getElementById('play-status').textContent = '未播放';
+                            document.getElementById('volume-value').textContent = '50%';
+                            document.getElementById('volume-slider').value = '50';
 
-            // 加载数据
-            updateStatus();
-            getAllFiles();
-            loadLogs();
-            getCacheInfo(); // 获取缓存信息
-            loadTimeline(); // 加载时间轴
+                            // 加载数据
+                            updateStatus();
+                            getAllFiles();
+                            loadLogs();
+                            getCacheInfo(); // 获取缓存信息
+                            loadTimeline(); // 加载时间轴
+                            initProgressControl(); // 初始化进度条控制
 
-            // 使用递归setTimeout替代setInterval，防止请求堆积
+                            // 使用递归setTimeout替代setInterval，防止请求堆积
 
-            // 状态更新循环 (5秒)
-            function scheduleStatusUpdate() {
-                setTimeout(() => {
-                    updateStatus().finally(scheduleStatusUpdate);
-                }, 5000);
+                            // 状态更新循环 (5秒)
+                            function scheduleStatusUpdate() {
+                                setTimeout(() => {
+                                    updateStatus().finally(scheduleStatusUpdate);
+                                }, 5000);
             }
-            scheduleStatusUpdate();
+                            scheduleStatusUpdate();
 
-            // 日志更新循环 (15秒)
-            function scheduleLogUpdate() {
-                setTimeout(() => {
-                    loadLogs().finally(scheduleLogUpdate);
-                }, 15000);
+                            // 日志更新循环 (15秒)
+                            function scheduleLogUpdate() {
+                                setTimeout(() => {
+                                    loadLogs().finally(scheduleLogUpdate);
+                                }, 15000);
             }
-            scheduleLogUpdate();
+                            scheduleLogUpdate();
 
-            // 缓存信息更新循环 (60秒)
-            function scheduleCacheUpdate() {
-                setTimeout(() => {
-                    getCacheInfo().finally(scheduleCacheUpdate);
-                }, 60000);
+                            // 缓存信息更新循环 (60秒)
+                            function scheduleCacheUpdate() {
+                                setTimeout(() => {
+                                    getCacheInfo().finally(scheduleCacheUpdate);
+                                }, 60000);
             }
-            scheduleCacheUpdate();
+                            scheduleCacheUpdate();
 
-            // 时间轴更新循环 (8秒)
-            function scheduleTimelineUpdate() {
-                setTimeout(() => {
-                    loadTimeline().finally(scheduleTimelineUpdate);
-                }, 8000);
+                            // 时间轴更新循环 (8秒)
+                            function scheduleTimelineUpdate() {
+                                setTimeout(() => {
+                                    loadTimeline().finally(scheduleTimelineUpdate);
+                                }, 8000);
             }
-            scheduleTimelineUpdate();
+                            scheduleTimelineUpdate();
 
-            // 自动播放检查循环 (5秒)
-            function scheduleAutoPlayCheck() {
-                setTimeout(() => {
-                    checkAndAutoPlayNext().finally(scheduleAutoPlayCheck);
-                }, 5000);
+                            // 自动播放检查循环 (5秒)
+                            function scheduleAutoPlayCheck() {
+                                setTimeout(() => {
+                                    checkAndAutoPlayNext().finally(scheduleAutoPlayCheck);
+                                }, 5000);
             }
-            scheduleAutoPlayCheck();
+                            scheduleAutoPlayCheck();
 
-            // 文件列表更新循环 (30秒)
-            function scheduleFileListUpdate() {
-                setTimeout(() => {
-                    checkAndUpdateFileList().finally(scheduleFileListUpdate);
-                }, 30000);
+                            // 文件列表更新循环 (30秒)
+                            function scheduleFileListUpdate() {
+                                setTimeout(() => {
+                                    checkAndUpdateFileList().finally(scheduleFileListUpdate);
+                                }, 30000);
             }
-            scheduleFileListUpdate();
+                            scheduleFileListUpdate();
 
-            // 搜索框回车事件
-            document.getElementById('search-input').addEventListener('keypress', function (e) {
+                            // 搜索框回车事件
+                            document.getElementById('search-input').addEventListener('keypress', function (e) {
                 if (e.keyCode === 13) { // 使用keyCode兼容性更好
-                    searchFiles();
+                                searchFiles();
                 }
             });
             // 按钮点击效果
             document.querySelectorAll('.control-btn, .search-box button, .action-btn').forEach(btn => {
-                btn.addEventListener('click', function () {
-                    this.style.transform = 'scale(0.95)';
-                    setTimeout(() => {
-                        this.style.transform = '';
-                    }, 150);
-                });
+                                btn.addEventListener('click', function () {
+                                    this.style.transform = 'scale(0.95)';
+                                    setTimeout(() => {
+                                        this.style.transform = '';
+                                    }, 150);
+                                });
             });
         });
     </script>

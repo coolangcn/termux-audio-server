@@ -574,6 +574,201 @@ h1::before {
 .progress-info {
     display: flex;
     justify-content: space-between;
+    font-size: 18px;
+    margin-bottom: 16px;
+    padding-left: 4px;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.file-items {
+    background: var(--bg-card);
+    backdrop-filter: var(--blur-medium);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    max-height: 400px;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+.file-item {
+    padding: 12px 16px;
+    border-radius: var(--radius-md);
+    color: var(--text-secondary);
+    font-size: 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    margin-bottom: 4px;
+}
+
+.file-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    transform: translateX(4px);
+}
+
+.file-item:active {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(0.98) translateX(4px);
+}
+
+/* Section Cards (Cache, Timeline, Logs) */
+.section-card {
+    margin-bottom: 20px;
+}
+
+.section-card h3 {
+    font-size: 16px;
+    margin-bottom: 12px;
+    color: var(--text-secondary);
+    padding-left: 4px;
+}
+
+.glass-card {
+    background: var(--bg-card);
+    backdrop-filter: var(--blur-medium);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    border: 1px solid var(--border-subtle);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.action-btn {
+    flex: 1;
+    padding: 10px;
+    border-radius: var(--radius-md);
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.action-btn.primary {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.action-btn.primary:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+.action-btn.danger {
+    background: rgba(255, 59, 48, 0.1);
+    color: #ff3b30;
+}
+
+.action-btn.danger:hover {
+    background: rgba(255, 59, 48, 0.2);
+}
+
+.info-container {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: var(--radius-md);
+    padding: 12px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--text-tertiary);
+    line-height: 1.5;
+}
+
+/* Scrollbar Styling */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* Loading Overlay */
+.loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(20px);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.3s ease;
+}
+
+.loading-spinner {
+    width: 50px;
+    height: 50px;
+    border: 3px solid rgba(255, 255, 255, 0.1);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    box-shadow: 0 0 20px rgba(0, 224, 84, 0.2);
+}
+
+.loading-text {
+    margin-top: 24px;
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+}
+
+.loading-filename {
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+    max-width: 80%;
+    text-align: center;
+}
+
+/* Animations */
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+/* Progress Bar (Download) */
+.progress-container {
+    margin-bottom: 20px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-md);
+    padding: 12px;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
     font-size: 12px;
     color: var(--text-secondary);
     margin-bottom: 8px;
@@ -592,4 +787,66 @@ h1::before {
     width: 0%;
     transition: width 0.3s ease;
     box-shadow: 0 0 10px rgba(0, 224, 84, 0.5);
+}
+
+/* Progress Control */
+.progress-control {
+    width: 100%;
+    margin-top: 10px;
+}
+
+.time-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    font-variant-numeric: tabular-nums;
+}
+
+.progress-slider-container {
+    width: 100%;
+    height: 20px;
+    display: flex;
+    align-items: center;
+}
+
+.progress-slider {
+    width: 100%;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: var(--radius-full);
+    outline: none;
+    background-image: var(--accent-gradient);
+    background-repeat: no-repeat;
+    background-size: 0% 100%;
+    cursor: pointer;
+}
+
+.progress-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    background: var(--text-primary);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 0;
+    /* Align thumb with track */
+}
+
+.progress-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.5);
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+}
+
+.progress-slider::-webkit-slider-runnable-track {
+    -webkit-appearance: none;
+    box-shadow: none;
+    border: none;
+    background: transparent;
 }

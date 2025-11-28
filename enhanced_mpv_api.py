@@ -1167,6 +1167,25 @@ def play_track(index):
         return jsonify({"status": "ok", "action": "play_track", "index": index}), 200
     return jsonify({"status": "error", "message": message}), 500
 
+@app.route('/mpv/seek', methods=['GET'])
+@log_operation("调整播放进度")
+def seek():
+    """调整播放进度"""
+    try:
+        position = request.args.get('position')
+        if not position:
+            return jsonify({"status": "error", "message": "Missing position parameter"}), 400
+            
+        # 发送seek命令
+        success, message = send_mpv_command(["seek", position, "absolute"])
+        
+        if success:
+            return jsonify({"status": "ok", "action": "seek", "position": position}), 200
+        else:
+            return jsonify({"status": "error", "message": message}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 @app.route('/mpv/play/file/<path:filename>', methods=['GET'])
 @log_operation("播放指定文件")
 def play_file(filename):

@@ -834,6 +834,15 @@ def get_download_progress(task_id):
 @app.route('/mpv/pause', methods=['GET'])
 @log_operation("播放/暂停切换")
 def pause_toggle():
+    # 检查当前是否处于空闲状态或未播放文件
+    idle, _ = get_mpv_property("idle-active")
+    filename, _ = get_mpv_property("filename")
+    
+    # 如果是空闲状态或没有文件名，则视为未播放，执行播放下一首的操作
+    if idle is True or not filename:
+        operation_logger.info("检测到MPV空闲，'暂停'按钮触发播放操作")
+        return next_track()
+        
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息

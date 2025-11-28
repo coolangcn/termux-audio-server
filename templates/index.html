@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎵 音频控制面板 - Premium Edition</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* 获奖级别UI设计 - 现代音乐播放器 */
+        
+        /* CSS变量系统 */
+        :root {
+            /* 高级配色 */
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --dark-gradient: linear-gradient(135deg, #2d3561 0%, #1f2041 100%);
+            
+            /* 玻璃态效果 */
+            --glass-bg: rgba(255, 255, 255, 0.95);
+            --glass-border: rgba(255, 255, 255, 0.18);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+            
+            /* 间距系统 */
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 24px;
+            --spacing-xl: 32px;
+            
+            /* 圆角系统 */
+            --radius-sm: 8px;
+            --radius-md: 16px;
+            --radius-lg: 24px;
+            --radius-xl: 32px;
+            --radius-full: 9999px;
+            
+            /* 阴影系统 */
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+            --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+            --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
+            --shadow-xl: 0 12px 48px rgba(0,0,0,0.20);
+            --shadow-glow: 0 0 30px rgba(102, 126, 234, 0.5);
+            --shadow-glow-pink: 0 0 30px rgba(240, 147, 251, 0.5);
+        }
+        
+        /* 关键帧动画 */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { 
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
+            }
+            50% { 
+                transform: scale(1.05);
+                box-shadow: 0 0 0 10px rgba(102, 126, 234, 0);
+            }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes slideInRight {
+            from {
+                opacity: 0;
+                transform: translateX(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+        
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        @keyframes shimmer {
+            0% { background-position: -1000px 0; }
+            100% { background-position: 1000px 0; }
+        }
+        
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        
+        /* 基础样式 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+            background-size: 400% 400%;
+            animation: gradientShift 15s ease infinite;
+            color: #1a1a1a;
+            max-width: 800px; /* 增加宽度以适应更多内容 */
+            margin: 0 auto;
+            padding: var(--spacing-lg);
+            min-height: 100vh;
+            position: relative;
+        }
+        
+        /* 背景装饰 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+            background-size: 50px 50px;
+            animation: float 20s ease-in-out infinite;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            position: relative;
+            z-index: 1;
+            animation: fadeInUp 0.8s ease-out;
+        }
+        
+        h1 {
+            text-align: center;
+            color: white;
+            font-size: 32px;
+            margin-bottom: var(--spacing-xl);
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            text-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            animation: fadeInUp 0.6s ease-out;
+        }
+        
+        /* 玻璃态卡片 */
+        .glass-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: var(--radius-xl);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .glass-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 48px 0 rgba(31, 38, 135, 0.25);
+        }
+        
+        /* 音乐信息卡片 - 带封面 */
+        .status {
+            background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: white;
+            padding: var(--spacing-xl);
+            border-radius: var(--radius-xl);
+            margin-bottom: var(--spacing-lg);
+            text-align: center;
+            box-shadow: var(--shadow-glow);
+            position: relative;
+            overflow: hidden;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+        
+        .status::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+            animation: rotate 20s linear infinite;
+        }
+        
+        .status-content {
+            position: relative;
+            z-index: 1;
+        }
+        
+        /* 虚拟音乐封面 */
+        .album-cover {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto var(--spacing-md);
+            border-radius: var(--radius-full);
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 0 0 8px rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            position: relative;
+            animation: pulse 3s ease-in-out infinite;
+        }
+        
+        .album-cover::after {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 50%;
+        }
+        
+        .status div {
+            margin: var(--spacing-sm) 0;
+            font-weight: 500;
+        }
+        
+        #current-file {
+            font-size: 20px;
+            font-weight: 700;
+            margin-top: var(--spacing-md);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        #play-status {
+            font-size: 16px;
+            opacity: 0.95;
+            font-weight: 600;
+        }
+        
+        #volume {
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        /* 下载进度条样式 - 增强版 */
+        .progress-container {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-md);
+            animation: slideInRight 0.5s ease-out;
+        }
+        
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: var(--spacing-sm);
+            font-size: 14px;
+            color: #333;
+            font-weight: 600;
+        }
+        
+        .progress-filename {
+            flex: 1;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-right: var(--spacing-md);
+        }
+        
+        .progress-percent {
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .progress-bar-bg {
+            height: 10px;
+            background: rgba(0,0,0,0.1);
+            border-radius: var(--radius-full);
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+            position: relative;
+        }
+        
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--primary-gradient);
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 0%;
+            border-radius: var(--radius-full);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .progress-bar-fill::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            bottom: 0;
+            right: 0;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            animation: shimmer 2s infinite;
+        }
+        
+        /* 控制按钮区域 */
+        .controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: var(--spacing-lg);
+            margin-bottom: var(--spacing-xl);
+            animation: fadeInUp 1s ease-out 0.4s both;
+        }
+        
+        .control-btn {
+            border: none;
+            border-radius: var(--radius-full);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-size: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .control-btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .control-btn:active::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .control-btn.primary {
+            background: var(--primary-gradient);
+            color: white;
+            width: 70px;
+            height: 70px;
+            font-size: 28px;
+            box-shadow: var(--shadow-glow);
+        }
+        
+        .control-btn.primary:hover {
+            transform: scale(1.1);
+            box-shadow: 0 0 40px rgba(102, 126, 234, 0.6);
+        }
+        
+        .control-btn.primary:active {
+            transform: scale(0.95);
+        }
+        
+        .control-btn.secondary {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            color: #667eea;
+            width: 56px;
+            height: 56px;
+            font-size: 20px;
+            border: 2px solid rgba(102, 126, 234, 0.3);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .control-btn.secondary:hover {
+            transform: scale(1.05);
+            border-color: rgba(102, 126, 234, 0.6);
+            box-shadow: var(--shadow-lg);
+        }
+        
+        .control-btn.secondary:active {
+            transform: scale(0.95);
+        }
+        
+        /* 音量控制 */
+        .volume-control {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            padding: var(--spacing-lg);
+            border-radius: var(--radius-lg);
+            margin-bottom: var(--spacing-lg);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-md);
+            animation: fadeInUp 1.2s ease-out 0.6s both;
+        }
+        
+        .volume-control span {
+            font-weight: 600;
+            color: #333;
+            white-space: nowrap;
+        }
+        
+        .volume-slider {
+            flex: 1;
+            -webkit-appearance: none;
+            height: 8px;
+            border-radius: var(--radius-full);
+            background: linear-gradient(to right, #667eea 0%, #764ba2 100%);
+            outline: none;
+            opacity: 0.9;
+            transition: opacity 0.3s;
+        }
+        
+        .volume-slider:hover {
+            opacity: 1;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        
+        .volume-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .volume-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+        }
+        
+        .volume-slider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .volume-value {
+            min-width: 45px;
+            text-align: right;
+            font-weight: 700;
+            background: var(--primary-gradient);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            font-size: 16px;
+        }
+        
+        /* 搜索框 */
+        .search-box {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            padding: var(--spacing-sm);
+            margin-bottom: var(--spacing-lg);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-md);
+            display: flex;
+            gap: var(--spacing-sm);
+            animation: fadeInUp 1.4s ease-out 0.8s both;
+        }
+        
+        .search-box input {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 15px;
+            background: rgba(255,255,255,0.5);
+            transition: all 0.3s;
+        }
+        
+        .search-box input:focus {
+            outline: none;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+        }
+        
+        .search-box button {
+            background: var(--primary-gradient);
+            color: white;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 12px 24px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .search-box button:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .search-box button:active {
+            transform: translateY(0);
+        }
+        
+        /* 文件列表 */
+        .file-list {
+            animation: fadeInUp 1.6s ease-out 1s both;
+        }
+        
+        .file-list h3 {
+            font-size: 18px;
+            margin-bottom: var(--spacing-md);
+            color: white;
+            font-weight: 700;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .file-items {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--shadow-md);
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .file-item {
+            padding: 16px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+        }
+        
+        .file-item:last-child {
+            border-bottom: none;
+        }
+        
+        .file-item:hover {
+            background: rgba(102, 126, 234, 0.1);
+            padding-left: 24px;
+        }
+        
+        .file-item::before {
+            content: '🎵';
+            font-size: 20px;
+        }
+        
+        /* 按钮通用样式 */
+        .action-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .action-btn.primary {
+            background: var(--primary-gradient);
+            color: white;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .action-btn.danger {
+            background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+            color: #d63031;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+        
+        /* 缓存和日志区域 */
+        .section-card {
+            margin-top: var(--spacing-xl);
+        }
+        
+        .section-card h3 {
+            font-size: 18px;
+            margin-bottom: var(--spacing-md);
+            color: white;
+            font-weight: 700;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        
+        .info-container {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 15px;
+            height: 150px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 12px;
+            border: 1px solid rgba(0,0,0,0.05);
+            color: #333;
+        }
+        
+        /* 时间轴样式 */
+        .timeline-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .timeline-time {
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+        
+        .timeline-file {
+            color: #764ba2;
+            font-weight: 500;
+        }
+        
+        /* 响应式设计 */
+        @media (max-width: 480px) {
+            body {
+                padding: var(--spacing-md);
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .control-btn.primary {
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+            }
+            
+            .control-btn.secondary {
+                width: 48px;
+                height: 48px;
+                font-size: 18px;
+            }
+            
+            .album-cover {
+                width: 100px;
+                height: 100px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 音频控制面板</h1>
+        
+        <!-- 音乐信息卡片 -->
+        <div class="status">
+            <div class="status-content">
+                <div class="album-cover">🎧</div>
+                <div>🎵 当前播放</div>
+                <div id="current-file">无</div>
+                <div>播放状态: <span id="play-status">未播放</span></div>
+                <div>音量: <span id="volume">0</span>%</div>
+            </div>
+        </div>
+        
+        <!-- 下载进度条 -->
+        <div id="download-progress-container" class="progress-container" style="display: none;">
+            <div class="progress-info">
+                <span id="download-filename" class="progress-filename">正在加载...</span>
+                <span id="download-percent" class="progress-percent">0%</span>
+            </div>
+            <div class="progress-bar-bg">
+                <div id="download-progress-bar" class="progress-bar-fill"></div>
+            </div>
+        </div>
+        
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button class="control-btn secondary" onclick="prevTrack()">⏮️</button>
+            <button class="control-btn primary" onclick="pauseToggle()">⏯️</button>
+            <button class="control-btn secondary" onclick="nextTrack()">⏭️</button>
+        </div>
+        
+        <!-- 音量控制 -->
+        <div class="volume-control">
+            <span>🔈 音量:</span>
+            <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50" oninput="adjustVolume(this.value)">
+            <span id="volume-value" class="volume-value">50%</span>
+        </div>
+        
+        <!-- 搜索框 -->
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="🔍 搜索歌曲...">
+            <button onclick="searchFiles()">搜索</button>
+        </div>
+        
+        <!-- 文件列表 -->
+        <div class="file-list">
+            <h3>🎵 歌曲列表</h3>
+            <div id="file-list" class="file-items">
+                <!-- 文件列表将在这里显示 -->
+            </div>
+        </div>
+        
+        <!-- 缓存管理 -->
+        <div class="section-card">
+            <h3>💾 缓存管理</h3>
+            <div class="glass-card">
+                <div class="action-buttons">
+                    <button class="action-btn primary" onclick="getCacheInfo()">刷新信息</button>
+                    <button class="action-btn danger" onclick="clearCache()">清空缓存</button>
+                </div>
+                <div id="cache-info" class="info-container">
+                    <div id="cache-content">加载中...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 时间轴 -->
+        <div class="section-card">
+            <h3>⏱️ 播放时间轴</h3>
+            <div class="glass-card">
+                <div class="action-buttons">
+                    <button class="action-btn primary" onclick="loadTimeline()">刷新时间轴</button>
+                    <button class="action-btn danger" onclick="clearTimeline()">清空时间轴</button>
+                </div>
+                <div id="timeline-container" class="info-container">
+                    <div id="timeline-content">加载中...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 操作日志 -->
+        <div class="section-card">
+            <h3>📝 操作日志</h3>
+            <div class="glass-card">
+                <div class="action-buttons">
+                    <button class="action-btn primary" onclick="loadLogs()">刷新日志</button>
+                    <button class="action-btn danger" onclick="clearLogs()">清空日志</button>
+                </div>
+                <div id="log-container" class="info-container">
+                    <div id="log-content">加载中...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 更新状态信息
+        function updateStatus() {
+            fetch('/mpv/status')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    console.log('Status data received:', data);
+                    
+                    // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
+                    // 确保current_file是字符串类型
+                    var currentFile = typeof data.current_file === 'string' ? data.current_file : '';
+                    var hasCurrentFile = currentFile && currentFile.trim() !== '';
+                    document.getElementById('current-file').textContent = hasCurrentFile ? currentFile : '无';
+                    
+                    // 根据是否有当前文件和暂停状态来正确显示播放状态
+                    if (!hasCurrentFile) {
+                        document.getElementById('play-status').textContent = '未播放';
+                    } else {
+                        document.getElementById('play-status').textContent = data.paused ? '已暂停' : '正在播放';
+                    }
+                    
+                    // 修复音量显示问题：总是更新音量显示，除非用户正在主动调整
+                    // 这样可以确保显示正确的音量值
+                    var volumeValue = Math.round(data.volume) || 0;
+                    console.log('Updating volume display:', volumeValue);
+                    document.getElementById('volume').textContent = volumeValue;
+                    document.getElementById('volume-slider').value = volumeValue;
+                    document.getElementById('volume-value').textContent = volumeValue;
+                })
+                .catch(function(error) {
+                    console.error('Error updating status:', error);
+                    // 出错时也更新UI，显示错误状态
+                    document.getElementById('current-file').textContent = '无';
+                    document.getElementById('play-status').textContent = '未播放';
+                    document.getElementById('volume').textContent = '0';
+                    document.getElementById('volume-slider').value = '50';
+                    document.getElementById('volume-value').textContent = '50';
+                });
+        }
+        
+        // 更新文件列表
+        function updateFileList(files) {
+            const fileList = document.getElementById('file-list');
+            fileList.innerHTML = '';
+            
+            // 存储当前文件列表到全局变量
+            window.currentFileList = files;
+            
+            files.forEach((file, index) => {
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.textContent = file;
+                fileItem.onclick = () => playFileByName(file);
+                fileList.appendChild(fileItem);
+            });
+        }
+        
+        // 获取所有文件
+        function getAllFiles() {
+            fetch('/files')
+                .then(response => response.json())
+                .then(data => {
+                    updateFileList(data.files);
+                })
+                .catch(error => {
+                    console.error('Error fetching files:', error);
+                });
+        }
+        
+        // 搜索文件
+        function searchFiles() {
+            const query = document.getElementById('search-input').value;
+            const url = query ? `/files/search?q=${encodeURIComponent(query)}` : '/files';
+            
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    updateFileList(data.files);
+                })
+                .catch(error => {
+                    console.error('Error searching files:', error);
+                });
+        }
+        
+        // 控制API调用
+        function callAPI(endpoint) {
+            fetch(endpoint)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('API Response:', data);
+                    if (data.status === 'error') {
+                        alert('操作失败: ' + data.message);
+                    } else {
+                        // 操作成功，更新状态、日志和时间轴
+                        setTimeout(updateStatus, 500); // 稍后更新状态
+                        loadLogs(); // 更新日志
+                        loadTimeline(); // 更新时间轴
+                    }
+                })
+                .catch(error => {
+                    console.error('API Error:', error);
+                    alert('API调用失败: ' + error.message);
+                });
+        }
+        
+        // 控制函数
+        function pauseToggle() {
+            callAPI('/mpv/pause');
+        }
+        
+        function nextTrack() {
+            // 停止之前的进度轮询（如果有）
+            if (progressPollingInterval) {
+                stopProgressPolling();
+            }
+            
+            fetch('/mpv/next')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Next Track Response:', data);
+                    if (data.status === 'error') {
+                        alert('操作失败: ' + data.message);
+                    } else {
+                        // 如果有任务ID，开始轮询进度
+                        if (data.task_id) {
+                            pollDownloadProgress(data.task_id, data.next_file);
+                        }
+                        
+                        // 更新状态、日志和时间轴
+                        setTimeout(updateStatus, 500);
+                        loadLogs();
+                        loadTimeline();
+                    }
+                })
+                .catch(error => {
+                    console.error('API Error:', error);
+                    alert('API调用失败: ' + error.message);
+                });
+        }
+        
+        // 进度条相关函数
+        let progressPollingInterval = null;
+        
+        function showProgressBar(filename) {
+            const container = document.getElementById('download-progress-container');
+            const filenameEl = document.getElementById('download-filename');
+            const percentEl = document.getElementById('download-percent');
+            const progressBar = document.getElementById('download-progress-bar');
+            
+            filenameEl.textContent = '正在加载: ' + filename;
+            percentEl.textContent = '0%';
+            progressBar.style.width = '0%';
+            container.style.display = 'block';
+        }
+        
+        function hideProgressBar() {
+            const container = document.getElementById('download-progress-container');
+            container.style.display = 'none';
+        }
+        
+        function updateProgressBar(progress, filename) {
+            const percentEl = document.getElementById('download-percent');
+            const progressBar = document.getElementById('download-progress-bar');
+            const filenameEl = document.getElementById('download-filename');
+            
+            if (filename) {
+                filenameEl.textContent = '正在加载: ' + filename;
+            }
+            percentEl.textContent = progress + '%';
+            progressBar.style.width = progress + '%';
+        }
+        
+        function stopProgressPolling() {
+            if (progressPollingInterval) {
+                clearInterval(progressPollingInterval);
+                progressPollingInterval = null;
+            }
+            // 延迟隐藏进度条，让用户看到100%
+            setTimeout(hideProgressBar, 500);
+        }
+        
+        function pollDownloadProgress(taskId, filename) {
+            if (!taskId) {
+                // 如果没有任务ID（文件已在缓存中），不显示进度条
+                return;
+            }
+            
+            // 显示进度条
+            showProgressBar(filename);
+            
+            // 开始轮询
+            progressPollingInterval = setInterval(() => {
+                fetch(`/download/progress/${taskId}`)
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            updateProgressBar(data.progress, data.filename);
+                            
+                            // 检查是否完成或出错
+                            if (data.download_status === 'completed') {
+                                console.log('Download completed');
+                                stopProgressPolling();
+                                // 更新状态
+                                setTimeout(updateStatus, 500);
+                            } else if (data.download_status === 'error') {
+                                console.error('Download error:', data.error);
+                                stopProgressPolling();
+                                alert('下载失败: ' + data.error);
+                            }
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error polling progress:', error);
+                    });
+            }, 500); // 每0.5秒轮询一次
+        }
+        
+        function prevTrack() {
+            callAPI('/mpv/prev');
+        }
+        
+        // 这些功能已被移除但保留函数定义以避免错误
+        function stopPlayback() {}
+        function shufflePlaylist() {}
+        
+        function playTrack(index) {
+            callAPI(`/mpv/play/${index}`);
+        }
+        
+        function playFileByName(filename) {
+            // 显示加载状态
+            const fileList = document.getElementById('file-list');
+            const loadingMsg = document.createElement('div');
+            loadingMsg.id = 'loading-msg';
+            loadingMsg.style.cssText = 'color: #666; font-style: italic; padding: 10px; text-align: center;';
+            loadingMsg.textContent = `正在加载: ${filename}...`;
+            fileList.appendChild(loadingMsg);
+            
+            // 首先构建播放列表，然后播放指定文件
+            fetch('/mpv/build_playlist', {method: 'POST'})
+                .then(response => response.json())
+                .then(playlistData => {
+                    console.log('播放列表构建成功:', playlistData);
+                    
+                    // 然后播放指定文件
+                    return fetch(`/mpv/play/file/${encodeURIComponent(filename)}`);
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // 移除加载消息
+                    const loadingElement = document.getElementById('loading-msg');
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
+                    if (data.status === 'ok') {
+                        console.log('播放成功:', data);
+                        // 更新状态、日志和时间轴
+                        setTimeout(updateStatus, 500);
+                        loadLogs();
+                        loadTimeline();
+                        
+                        // 显示成功消息
+                        const source = data.source === 'cache' ? '缓存' : 'NAS';
+                        showNotification(`开始播放: ${filename} (来自${source})`);
+                    } else {
+                        alert('播放失败: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    // 移除加载消息
+                    const loadingElement = document.getElementById('loading-msg');
+                    if (loadingElement) {
+                        loadingElement.remove();
+                    }
+                    
+                    console.error('播放失败:', error);
+                    alert('播放失败: ' + error.message);
+                });
+        }
+        
+        function showNotification(message) {
+            // 创建通知元素
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #28a745;
+                color: white;
+                padding: 10px 15px;
+                border-radius: 5px;
+                box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                z-index: 1000;
+                font-size: 14px;
+                max-width: 300px;
+            `;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            // 3秒后自动移除
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 3000);
+        }
+        
+        function adjustVolume(value) {
+            console.log('Adjusting volume to:', value);
+            // 立即更新所有音量显示元素，确保即时反馈
+            document.getElementById('volume').textContent = value;
+            document.getElementById('volume-value').textContent = value;
+            document.getElementById('volume-slider').value = value;
+            
+            // 发送API请求设置音量
+            fetch('/mpv/volume/set?value=' + value)
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    console.log('音量设置成功:', data);
+                    // 音量设置成功后，再发送一次确认请求确保设置生效
+                    setTimeout(function() {
+                        fetch('/mpv/volume/set?value=' + value);
+                    }, 500);
+                })
+                .catch(function(error) {
+                    console.error('音量设置失败:', error);
+                    // 出错时仍然保持UI更新，因为用户可能已经调整了滑块
+                });
+        }
+        
+        // 同步文件功能已被移除
+        function syncFiles() {}
+        
+        // 日志相关函数
+        function loadLogs() {
+            fetch('/logs')
+                .then(response => response.json())
+                .then(data => {
+                    const logContent = document.getElementById('log-content');
+                    if (data.logs && data.logs.length > 0) {
+                        // 保持日志的正确顺序（最新的在底部）
+                        logContent.innerHTML = data.logs.join('<br>');
+                    } else {
+                        logContent.innerHTML = '暂无操作日志';
+                    }
+                    
+                    const logContainer = document.getElementById('log-container');
+                    logContainer.scrollTop = logContainer.scrollHeight;
+                })
+                .catch(error => {
+                    console.error('Error loading logs:', error);
+                    document.getElementById('log-content').innerHTML = '加载日志失败';
+                });
+        }
+        
+        // 缓存管理函数
+        function getCacheInfo() {
+            const cacheContent = document.getElementById('cache-content');
+            cacheContent.innerHTML = '<span style="color: #666;">正在获取缓存信息...</span>';
+            
+            fetch('/cache/info')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        let infoHtml = `<strong>缓存信息:</strong><br>`;
+                        infoHtml += `总大小: ${data.total_size}<br>`;
+                        infoHtml += `文件数量: ${data.file_count}<br>`;
+                        infoHtml += `缓存目录: ${data.cache_dir}<br>`;
+                        
+                        if (data.files && data.files.length > 0) {
+                            infoHtml += `<br><strong>缓存文件列表:</strong><br>`;
+                            data.files.forEach(file => {
+                                infoHtml += `• ${file.name} (${file.size}, ${file.modified})<br>`;
+                            });
+                        } else {
+                            infoHtml += `<br><em>暂无缓存文件</em>`;
+                        }
+                        
+                        cacheContent.innerHTML = infoHtml;
+                    } else {
+                        cacheContent.innerHTML = `<span style="color: #ff6b6b;">获取缓存信息失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error getting cache info:', error);
+                    cacheContent.innerHTML = '<span style="color: #ff6b6b;">获取缓存信息失败</span>';
+                });
+        }
+        
+        function clearCache() {
+            if (confirm('确定要清空所有缓存文件吗？')) {
+                const cacheContent = document.getElementById('cache-content');
+                cacheContent.innerHTML = '<span style="color: #666;">正在清空缓存...</span>';
+                
+                fetch('/cache/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        cacheContent.innerHTML = `<span style="color: #28a745;">缓存已清空: 删除了 ${data.removed_count} 个文件，释放了 ${data.removed_size_mb} MB</span>`;
+                        
+                        // 2秒后重新获取缓存信息
+                        setTimeout(function() {
+                            getCacheInfo();
+                        }, 2000);
+                    } else {
+                        cacheContent.innerHTML = `<span style="color: #ff6b6b;">清空缓存失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error clearing cache:', error);
+                    cacheContent.innerHTML = '<span style="color: #ff6b6b;">清空缓存失败</span>';
+                });
+            }
+        }
+        
+        function clearLogs() {
+            if (confirm('确定要清空所有操作日志吗？')) {
+                // 显示清空中状态
+                const logContent = document.getElementById('log-content');
+                logContent.innerHTML = '<span style="color: #666;">正在清空日志...</span>';
+                
+                // 使用更可靠的fetch调用方式，添加错误处理和超时
+                var timeoutId = setTimeout(function() {
+                    logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志请求超时，请稍后重试</span>';
+                    setTimeout(function() {
+                        loadLogs(); // 重新加载日志
+                    }, 2000);
+                }, 8000);
+                
+                fetch('/logs/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 7000 // 设置7秒超时
+                })
+                .then(function(response) {
+                    clearTimeout(timeoutId);
+                    if (!response.ok) {
+                        throw new Error('响应状态: ' + response.status);
+                    }
+                    return response.json();
+                })
+                .then(function(data) {
+                    console.log('日志清空成功:', data);
+                    // 清空后立即更新UI
+                    logContent.innerHTML = '<span style="color: #28a745;">日志已清空</span>';
+                    
+                    // 显示成功消息，2秒后重新加载日志
+                    setTimeout(function() {
+                        loadLogs();
+                    }, 2000);
+                })
+                .catch(function(error) {
+                    clearTimeout(timeoutId);
+                    console.error('清空日志失败:', error);
+                    logContent.innerHTML = '<span style="color: #ff6b6b;">清空日志失败: ' + error.message + '</span>';
+                    
+                    // 3秒后重新加载日志
+                    setTimeout(function() {
+                        loadLogs();
+                    }, 3000);
+                });
+            }
+        }
+        
+        // 自动播放下一首功能
+        let lastFileCount = 0;
+        let lastCurrentFile = null; // 记录上一首播放的文件
+        let isPlaying = false; // 记录播放状态
+        
+        function checkAndAutoPlayNext() {
+            // 获取当前播放状态
+            fetch('/mpv/status')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Auto-play check:', data);
+                    
+                    // 确保current_file是字符串类型
+                    const currentFile = typeof data.current_file === 'string' ? data.current_file : '';
+                    const hasCurrentFile = currentFile && currentFile.trim() !== '';
+                    const currentIsPlaying = hasCurrentFile && !data.paused;
+                    
+                    // 检测播放结束的三种方式：
+                    // 1. 播放位置接近文件末尾（相差不到2秒，更宽松的条件）
+                    // 2. 从有文件播放到无文件，且上一首是播放状态
+                    // 3. 文件改变了，但上一个文件是存在的（可能是手动切换的）
+                    const isNearEndOfPlayback = hasCurrentFile && data.position > 0 && 
+                                              data.duration > 0 && 
+                                              (data.duration - data.position) < 2.0; // 小于2秒时认为即将结束
+                    
+                    const isFileEnded = !hasCurrentFile && lastCurrentFile && isPlaying;
+                    const isFileChanged = hasCurrentFile && lastCurrentFile && currentFile !== lastCurrentFile;
+                    
+                    if (isNearEndOfPlayback || isFileEnded) {
+                        console.log('检测到播放结束或接近结束，当前状态:', {
+                            isNearEndOfPlayback,
+                            isFileEnded,
+                            currentFile,
+                            lastFile: lastCurrentFile,
+                            position: data.position,
+                            duration: data.duration
+                        });
+                        
+                        // 直接调用后端的next_track API，与手动点击下一首按钮保持一致
+                        fetch('/mpv/next')
+                            .then(response => response.json())
+                            .then(nextData => {
+                                if (nextData.status === 'ok') {
+                                    console.log('自动播放下一首成功:', nextData.next_file);
+                                    showNotification(`自动播放下一首: ${nextData.next_file}`);
+                                } else {
+                                    console.error('自动播放下一首失败:', nextData.message);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('自动播放下一首请求失败:', error);
+                            });
+                    }
+                    
+                    // 更新状态记录
+                    lastCurrentFile = hasCurrentFile ? currentFile : null;
+                    isPlaying = currentIsPlaying;
+                })
+                .catch(error => {
+                    console.error('获取播放状态失败:', error);
+                });
+        }
+        
+        // 定时更新文件列表功能
+        function checkAndUpdateFileList() {
+            fetch('/files')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.files && data.files.length !== lastFileCount) {
+                        console.log('检测到文件列表变化，从', lastFileCount, '更新到', data.files.length);
+                        lastFileCount = data.files.length;
+                        updateFileList(data.files);
+                        
+                        // 显示更新通知
+                        showNotification(`文件列表已更新，共 ${data.files.length} 首歌曲`);
+                    }
+                })
+                .catch(error => {
+                    console.error('更新文件列表失败:', error);
+                });
+        }
+        
+        // 加载时间轴
+        function loadTimeline() {
+            fetch('/mpv/timeline')
+                .then(response => response.json())
+                .then(data => {
+                    const timelineContent = document.getElementById('timeline-content');
+                    if (data.events && data.events.length > 0) {
+                        // 构建时间轴HTML内容，最新的在顶部
+                        let timelineHtml = '';
+                        data.events.forEach(event => {
+                            // 格式化时间戳
+                            const timestamp = new Date(event.timestamp).toLocaleString();
+                            
+                            // 根据事件类型添加不同的图标
+                            let eventIcon = '•';
+                            if (event.type === 'next_track') eventIcon = '⏭️';
+                            else if (event.type === 'prev_track') eventIcon = '⏮️';
+                            else if (event.type === 'pause_toggle') eventIcon = '⏯️';
+                            else if (event.type === 'stop') eventIcon = '⏹️';
+                            else if (event.type === 'play') eventIcon = '▶️';
+                            
+                            // 构建描述文本
+                            let description = event.description;
+                            if (event.from_file) {
+                                description += ` (从: <span class="timeline-file">${event.from_file}</span>)`;
+                            }
+                            if (event.to_file) {
+                                description += ` (到: <span class="timeline-file">${event.to_file}</span>)`;
+                            }
+                            
+                            timelineHtml += `<div class="timeline-item">
+                                <span class="timeline-time">${timestamp}</span>
+                                <span class="timeline-event"> ${eventIcon} ${description}</span>
+                            </div>`;
+                        });
+                        
+                        timelineContent.innerHTML = timelineHtml;
+                    } else {
+                        timelineContent.innerHTML = '暂无时间轴记录';
+                    }
+                    
+                    // 滚动到底部（最新记录）
+                    const timelineContainer = document.getElementById('timeline-container');
+                    timelineContainer.scrollTop = 0; // 最新的在顶部，所以滚动到顶部
+                })
+                .catch(error => {
+                    console.error('Error loading timeline:', error);
+                    document.getElementById('timeline-content').innerHTML = '加载时间轴失败';
+                });
+        }
+        
+        // 清空时间轴
+        function clearTimeline() {
+            if (confirm('确定要清空所有时间轴记录吗？')) {
+                const timelineContent = document.getElementById('timeline-content');
+                timelineContent.innerHTML = '<span style="color: #666;">正在清空时间轴...</span>';
+                
+                fetch('/mpv/timeline/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'ok') {
+                        timelineContent.innerHTML = '<span style="color: #28a745;">时间轴已清空</span>';
+                        
+                        // 2秒后重新加载时间轴
+                        setTimeout(loadTimeline, 1000);
+                    } else {
+                        timelineContent.innerHTML = `<span style="color: #ff6b6b;">清空时间轴失败: ${data.message}</span>`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error clearing timeline:', error);
+                    timelineContent.innerHTML = '<span style="color: #ff6b6b;">清空时间轴失败</span>';
+                });
+            }
+        }
+        
+        // 初始化
+        document.addEventListener('DOMContentLoaded', function() {
+            // 立即初始化状态显示
+            document.getElementById('current-file').textContent = '无';
+            document.getElementById('play-status').textContent = '未播放';
+            document.getElementById('volume').textContent = '0';
+            document.getElementById('volume-slider').value = '50';
+            document.getElementById('volume-value').textContent = '50';
+            
+            // 加载数据
+            updateStatus();
+            getAllFiles();
+            loadLogs();
+            getCacheInfo(); // 获取缓存信息
+            loadTimeline(); // 加载时间轴
+            
+            // 每5秒更新一次状态
+            setInterval(updateStatus, 5000);
+            // 每10秒更新一次日志
+            setInterval(loadLogs, 10000);
+            // 每30秒更新一次缓存信息
+            setInterval(getCacheInfo, 30000);
+            // 每3秒更新一次时间轴，实现实时刷新
+            setInterval(loadTimeline, 3000);
+            
+            // 每3秒检查一次是否需要自动播放下一首
+            setInterval(checkAndAutoPlayNext, 3000);
+            // 每15秒检查一次文件列表是否有更新
+            setInterval(checkAndUpdateFileList, 15000);
+            
+            // 搜索框回车事件
+            document.getElementById('search-input').addEventListener('keypress', function(e) {
+                if (e.keyCode === 13) { // 使用keyCode兼容性更好
+                    searchFiles();
+                }
+            });
+            // 按钮点击效果
+            document.querySelectorAll('.control-btn, .search-box button, .action-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    this.style.transform = 'scale(0.95)';
+                    setTimeout(() => {
+                        this.style.transform = '';
+                    }, 150);
+                });
+            });
+        });
+    </script>
+</body>
+</html>

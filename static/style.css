@@ -1,11 +1,12 @@
-/* Spotify风格UI设计 */
+/* Spotify风格UI设计 - 精美版 */
 
 /* CSS变量系统 - Spotify配色 */
 :root {
     /* Spotify配色 */
-    --spotify-black: #121212;
-    --spotify-dark: #181818;
-    --spotify-darker: #0a0a0a;
+    --spotify-black: #000000;
+    --spotify-dark: #121212;
+    --spotify-card: #181818;
+    --spotify-hover: #282828;
     --spotify-green: #1DB954;
     --spotify-light-green: #1ed760;
     --spotify-gray: #b3b3b3;
@@ -22,23 +23,25 @@
     /* 圆角系统 */
     --radius-sm: 4px;
     --radius-md: 8px;
-    --radius-lg: 12px;
+    --radius-lg: 16px;
     --radius-full: 9999px;
 
     /* 阴影系统 */
-    --shadow-sm: 0 2px 4px rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 8px 16px rgba(0, 0, 0, 0.5);
+    --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.6);
+    --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.7);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.8);
 }
 
 /* 关键帧动画 */
 @keyframes fadeIn {
     from {
         opacity: 0;
+        transform: translateY(10px);
     }
 
     to {
         opacity: 1;
+        transform: translateY(0);
     }
 }
 
@@ -64,6 +67,18 @@
     }
 }
 
+@keyframes slideIn {
+    from {
+        transform: translateX(-20px);
+        opacity: 0;
+    }
+
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
 /* 基础样式 */
 * {
     margin: 0;
@@ -73,36 +88,47 @@
 
 body {
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: var(--spotify-black);
+    background: linear-gradient(180deg, var(--spotify-black) 0%, var(--spotify-dark) 100%);
     color: var(--spotify-white);
-    max-width: 1200px;
+    max-width: 1400px;
     margin: 0 auto;
-    padding: var(--spacing-lg);
+    padding: var(--spacing-xl);
     min-height: 100vh;
 }
 
 .container {
-    animation: fadeIn 0.5s ease-out;
+    animation: fadeIn 0.6s ease-out;
 }
 
 h1 {
     text-align: center;
     color: var(--spotify-white);
-    font-size: 32px;
+    font-size: 48px;
     margin-bottom: var(--spacing-xl);
-    font-weight: 700;
-    letter-spacing: -0.5px;
+    font-weight: 800;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, var(--spotify-white) 0%, var(--spotify-green) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 /* 音乐信息卡片 */
 .status {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     color: var(--spotify-white);
     padding: var(--spacing-xl);
     border-radius: var(--radius-lg);
     margin-bottom: var(--spacing-lg);
     text-align: center;
     box-shadow: var(--shadow-md);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.3s ease;
+}
+
+.status:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
 }
 
 .status-content {
@@ -110,38 +136,44 @@ h1 {
 }
 
 .album-cover {
-    width: 120px;
-    height: 120px;
+    width: 140px;
+    height: 140px;
     margin: 0 auto var(--spacing-md);
     border-radius: var(--radius-md);
     background: linear-gradient(135deg, var(--spotify-green) 0%, var(--spotify-light-green) 100%);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 8px 32px rgba(29, 185, 84, 0.4);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 48px;
+    font-size: 64px;
+    animation: pulse 3s ease-in-out infinite;
 }
 
 .status div {
     margin: var(--spacing-sm) 0;
     font-weight: 500;
     color: var(--spotify-gray);
+    font-size: 14px;
 }
 
 #current-file {
-    font-size: 20px;
+    font-size: 24px;
     font-weight: 700;
     margin-top: var(--spacing-md);
     color: var(--spotify-white);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    max-width: 100%;
+    padding: 0 var(--spacing-md);
 }
 
 #play-status {
     font-size: 16px;
     color: var(--spotify-green);
-    font-weight: 600;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
 }
 
 #volume {
@@ -152,18 +184,19 @@ h1 {
 
 /* 下载进度条 */
 .progress-container {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     border-radius: var(--radius-md);
     padding: var(--spacing-md);
     margin-bottom: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .progress-info {
     display: flex;
     justify-content: space-between;
     margin-bottom: var(--spacing-sm);
-    font-size: 14px;
+    font-size: 13px;
     color: var(--spotify-gray);
     font-weight: 600;
 }
@@ -182,7 +215,7 @@ h1 {
 }
 
 .progress-bar-bg {
-    height: 6px;
+    height: 4px;
     background: var(--spotify-light-gray);
     border-radius: var(--radius-full);
     overflow: hidden;
@@ -190,10 +223,11 @@ h1 {
 
 .progress-bar-fill {
     height: 100%;
-    background: var(--spotify-green);
+    background: linear-gradient(90deg, var(--spotify-green) 0%, var(--spotify-light-green) 100%);
     transition: width 0.3s ease;
     width: 0%;
     border-radius: var(--radius-full);
+    box-shadow: 0 0 10px rgba(29, 185, 84, 0.5);
 }
 
 /* 控制按钮 */
@@ -212,14 +246,16 @@ h1 {
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.2s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 24px;
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     color: var(--spotify-white);
+    border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .control-btn:hover {
-    transform: scale(1.05);
+    transform: scale(1.08);
+    border-color: rgba(255, 255, 255, 0.2);
 }
 
 .control-btn:active {
@@ -227,34 +263,36 @@ h1 {
 }
 
 .control-btn.primary {
-    background: var(--spotify-green);
-    color: var(--spotify-white);
-    width: 56px;
-    height: 56px;
-    font-size: 24px;
-    box-shadow: var(--shadow-md);
+    background: var(--spotify-white);
+    color: var(--spotify-black);
+    width: 64px;
+    height: 64px;
+    font-size: 28px;
+    box-shadow: 0 4px 16px rgba(255, 255, 255, 0.2);
 }
 
 .control-btn.primary:hover {
-    background: var(--spotify-light-green);
-    transform: scale(1.1);
+    background: var(--spotify-green);
+    transform: scale(1.12);
+    box-shadow: 0 8px 24px rgba(29, 185, 84, 0.4);
 }
 
 .control-btn.secondary {
     background: transparent;
     color: var(--spotify-gray);
-    width: 40px;
-    height: 40px;
-    font-size: 20px;
+    width: 48px;
+    height: 48px;
+    font-size: 22px;
 }
 
 .control-btn.secondary:hover {
     color: var(--spotify-white);
+    background: var(--spotify-hover);
 }
 
 /* 音量控制 */
 .volume-control {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     padding: var(--spacing-lg);
     border-radius: var(--radius-md);
     margin-bottom: var(--spacing-lg);
@@ -262,12 +300,14 @@ h1 {
     align-items: center;
     gap: var(--spacing-md);
     box-shadow: var(--shadow-sm);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .volume-control span {
     font-weight: 600;
     color: var(--spotify-gray);
     white-space: nowrap;
+    font-size: 14px;
 }
 
 .volume-slider {
@@ -283,65 +323,76 @@ h1 {
 .volume-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--spotify-white);
     cursor: pointer;
     transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .volume-slider::-webkit-slider-thumb:hover {
     transform: scale(1.3);
+    background: var(--spotify-green);
 }
 
 .volume-slider::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: var(--spotify-white);
     cursor: pointer;
     border: none;
     transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .volume-slider::-moz-range-thumb:hover {
     transform: scale(1.3);
+    background: var(--spotify-green);
 }
 
 .volume-value {
-    min-width: 45px;
+    min-width: 50px;
     text-align: right;
     font-weight: 700;
     color: var(--spotify-white);
-    font-size: 14px;
+    font-size: 15px;
 }
 
 /* 搜索框 */
 .search-box {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     border-radius: var(--radius-md);
     padding: var(--spacing-sm);
     margin-bottom: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
     display: flex;
     gap: var(--spacing-sm);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: border-color 0.2s;
+}
+
+.search-box:focus-within {
+    border-color: var(--spotify-green);
 }
 
 .search-box input {
     flex: 1;
-    padding: 12px 16px;
+    padding: 14px 18px;
     border: none;
     border-radius: var(--radius-sm);
     font-size: 14px;
-    background: var(--spotify-light-gray);
+    background: var(--spotify-hover);
     color: var(--spotify-white);
     transition: all 0.2s;
+    font-weight: 500;
 }
 
 .search-box input:focus {
     outline: none;
-    background: var(--spotify-lighter-gray);
+    background: var(--spotify-light-gray);
 }
 
 .search-box input::placeholder {
@@ -353,41 +404,48 @@ h1 {
     color: var(--spotify-white);
     border: none;
     border-radius: var(--radius-sm);
-    padding: 12px 24px;
+    padding: 14px 28px;
     cursor: pointer;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.2s;
+    font-size: 14px;
 }
 
 .search-box button:hover {
     background: var(--spotify-light-green);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
 }
 
 /* 文件列表 */
 .file-list h3 {
-    font-size: 18px;
+    font-size: 20px;
     margin-bottom: var(--spacing-md);
     color: var(--spotify-white);
     font-weight: 700;
+    letter-spacing: -0.5px;
 }
 
 .file-items {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-sm);
-    max-height: 400px;
+    max-height: 500px;
     overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .file-item {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--spotify-light-gray);
+    padding: 14px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.15s ease;
     display: flex;
     align-items: center;
     gap: var(--spacing-md);
     color: var(--spotify-gray);
+    font-weight: 500;
+    font-size: 14px;
 }
 
 .file-item:last-child {
@@ -395,25 +453,38 @@ h1 {
 }
 
 .file-item:hover {
-    background: var(--spotify-light-gray);
+    background: var(--spotify-hover);
     color: var(--spotify-white);
-    padding-left: 20px;
+    padding-left: 24px;
+}
+
+.file-item:active {
+    background: var(--spotify-light-gray);
 }
 
 .file-item::before {
-    content: '🎵';
-    font-size: 16px;
+    content: '▶';
+    font-size: 12px;
+    color: var(--spotify-green);
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.file-item:hover::before {
+    opacity: 1;
 }
 
 /* 按钮通用样式 */
 .action-btn {
-    padding: 8px 16px;
+    padding: 10px 20px;
     border: none;
     border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: 13px;
-    font-weight: 600;
+    font-weight: 700;
     transition: all 0.2s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
 .action-btn.primary {
@@ -423,6 +494,8 @@ h1 {
 
 .action-btn.primary:hover {
     background: var(--spotify-light-green);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(29, 185, 84, 0.3);
 }
 
 .action-btn.danger {
@@ -432,12 +505,14 @@ h1 {
 
 .action-btn.danger:hover {
     background: #ff4757;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(226, 33, 52, 0.3);
 }
 
 .action-buttons {
     display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 12px;
+    margin-bottom: 12px;
 }
 
 /* 卡片区域 */
@@ -446,41 +521,70 @@ h1 {
 }
 
 .section-card h3 {
-    font-size: 18px;
+    font-size: 20px;
     margin-bottom: var(--spacing-md);
     color: var(--spotify-white);
     font-weight: 700;
+    letter-spacing: -0.5px;
 }
 
 .glass-card {
-    background: var(--spotify-dark);
+    background: var(--spotify-card);
     border-radius: var(--radius-md);
     padding: var(--spacing-lg);
     margin-bottom: var(--spacing-lg);
     box-shadow: var(--shadow-sm);
+    border: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 .info-container {
-    background: var(--spotify-darker);
+    background: var(--spotify-black);
     border-radius: var(--radius-sm);
-    padding: 15px;
-    height: 150px;
+    padding: 16px;
+    height: 180px;
     overflow-y: auto;
-    font-family: monospace;
+    font-family: 'Consolas', 'Monaco', monospace;
     font-size: 12px;
     color: var(--spotify-gray);
+    line-height: 1.6;
+}
+
+/* 滚动条样式 */
+.info-container::-webkit-scrollbar,
+.file-items::-webkit-scrollbar {
+    width: 12px;
+}
+
+.info-container::-webkit-scrollbar-track,
+.file-items::-webkit-scrollbar-track {
+    background: var(--spotify-black);
+    border-radius: var(--radius-sm);
+}
+
+.info-container::-webkit-scrollbar-thumb,
+.file-items::-webkit-scrollbar-thumb {
+    background: var(--spotify-light-gray);
+    border-radius: var(--radius-sm);
+    border: 3px solid var(--spotify-black);
+}
+
+.info-container::-webkit-scrollbar-thumb:hover,
+.file-items::-webkit-scrollbar-thumb:hover {
+    background: var(--spotify-gray);
 }
 
 /* 时间轴样式 */
 .timeline-item {
-    padding: 8px 0;
-    border-bottom: 1px solid var(--spotify-light-gray);
+    padding: 10px 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    animation: slideIn 0.3s ease-out;
 }
 
 .timeline-time {
     color: var(--spotify-green);
     font-weight: bold;
-    margin-right: 8px;
+    margin-right: 10px;
+    font-size: 11px;
 }
 
 .timeline-file {
@@ -495,64 +599,73 @@ h1 {
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95);
+    backdrop-filter: blur(10px);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     z-index: 9999;
-    animation: fadeIn 0.3s ease-out;
+    animation: fadeIn 0.2s ease-out;
 }
 
 .loading-spinner {
-    width: 60px;
-    height: 60px;
-    border: 4px solid var(--spotify-light-gray);
-    border-top: 4px solid var(--spotify-green);
+    width: 80px;
+    height: 80px;
+    border: 6px solid rgba(255, 255, 255, 0.1);
+    border-top: 6px solid var(--spotify-green);
     border-radius: 50%;
-    animation: spin 1s linear infinite;
+    animation: spin 0.8s linear infinite;
+    box-shadow: 0 0 30px rgba(29, 185, 84, 0.3);
 }
 
 .loading-text {
     color: var(--spotify-white);
-    font-size: 18px;
-    font-weight: 600;
-    margin-top: 24px;
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: 32px;
+    letter-spacing: 1px;
 }
 
 .loading-filename {
     color: var(--spotify-gray);
-    font-size: 14px;
-    margin-top: 12px;
+    font-size: 15px;
+    margin-top: 16px;
     max-width: 80%;
     text-align: center;
     word-break: break-all;
+    font-weight: 500;
 }
 
 /* 响应式设计 */
-@media (max-width: 480px) {
+@media (max-width: 768px) {
     body {
         padding: var(--spacing-md);
     }
 
     h1 {
-        font-size: 24px;
+        font-size: 32px;
     }
 
     .control-btn.primary {
-        width: 48px;
-        height: 48px;
-        font-size: 20px;
+        width: 56px;
+        height: 56px;
+        font-size: 24px;
     }
 
     .control-btn.secondary {
-        width: 36px;
-        height: 36px;
+        width: 40px;
+        height: 40px;
         font-size: 18px;
     }
 
     .album-cover {
-        width: 100px;
-        height: 100px;
+        width: 120px;
+        height: 120px;
+        font-size: 48px;
+    }
+
+    #current-file {
+        font-size: 18px;
     }
 }

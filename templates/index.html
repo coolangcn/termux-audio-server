@@ -12,6 +12,13 @@
 </head>
 
 <body>
+    <!-- 加载遮罩层 -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner"></div>
+        <div class="loading-text">正在加载...</div>
+        <div id="loading-filename" class="loading-filename"></div>
+    </div>
+
     <div class="container">
         <h1>🎵 音频控制面板</h1>
 
@@ -349,13 +356,13 @@
         }
 
         function playFileByName(filename) {
-            // 显示加载状态
-            const fileList = document.getElementById('file-list');
-            const loadingMsg = document.createElement('div');
-            loadingMsg.id = 'loading-msg';
-            loadingMsg.style.cssText = 'color: #666; font-style: italic; padding: 10px; text-align: center;';
-            loadingMsg.textContent = `正在加载: ${filename}...`;
-            fileList.appendChild(loadingMsg);
+            // 显示全屏加载遮罩
+            const overlay = document.getElementById('loading-overlay');
+            const filenameDisplay = document.getElementById('loading-filename');
+            if (overlay && filenameDisplay) {
+                filenameDisplay.textContent = filename;
+                overlay.style.display = 'flex';
+            }
 
             // 直接播放指定文件
             fetch(`/mpv/play/file/${encodeURIComponent(filename)}`)
@@ -366,11 +373,8 @@
                     return response.json();
                 })
                 .then(data => {
-                    // 移除加载消息
-                    const loadingElement = document.getElementById('loading-msg');
-                    if (loadingElement) {
-                        loadingElement.remove();
-                    }
+                    // 隐藏加载遮罩
+                    if (overlay) overlay.style.display = 'none';
 
                     if (data.status === 'ok') {
                         console.log('播放成功:', data);
@@ -387,11 +391,8 @@
                     }
                 })
                 .catch(error => {
-                    // 移除加载消息
-                    const loadingElement = document.getElementById('loading-msg');
-                    if (loadingElement) {
-                        loadingElement.remove();
-                    }
+                    // 隐藏加载遮罩
+                    if (overlay) overlay.style.display = 'none';
 
                     console.error('播放失败:', error);
                     alert('播放失败: ' + error.message);

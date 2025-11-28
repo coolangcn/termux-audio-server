@@ -109,7 +109,7 @@
     <script>
         // 更新状态信息
         function updateStatus() {
-            fetch('/mpv/status')
+            return fetch('/mpv/status')
                 .then(function(response) { return response.json(); })
                 .then(function(data) {
                     console.log('Status data received:', data);
@@ -453,7 +453,7 @@
         
         // 日志相关函数
         function loadLogs() {
-            fetch('/logs')
+            return fetch('/logs')
                 .then(response => response.json())
                 .then(data => {
                     const logContent = document.getElementById('log-content');
@@ -478,7 +478,7 @@
             const cacheContent = document.getElementById('cache-content');
             cacheContent.innerHTML = '<span style="color: #666;">正在获取缓存信息...</span>';
             
-            fetch('/cache/info')
+            return fetch('/cache/info')
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'ok') {
@@ -596,7 +596,7 @@
         
         function checkAndAutoPlayNext() {
             // 获取当前播放状态
-            fetch('/mpv/status')
+            return fetch('/mpv/status')
                 .then(response => response.json())
                 .then(data => {
                     console.log('Auto-play check:', data);
@@ -654,7 +654,7 @@
         
         // 定时更新文件列表功能
         function checkAndUpdateFileList() {
-            fetch('/files')
+            return fetch('/files')
                 .then(response => response.json())
                 .then(data => {
                     if (data.files && data.files.length !== lastFileCount) {
@@ -673,7 +673,7 @@
         
         // 加载时间轴
         function loadTimeline() {
-            fetch('/mpv/timeline')
+            return fetch('/mpv/timeline')
                 .then(response => response.json())
                 .then(data => {
                     const timelineContent = document.getElementById('timeline-content');
@@ -768,19 +768,55 @@
             getCacheInfo(); // 获取缓存信息
             loadTimeline(); // 加载时间轴
             
-            // 每5秒更新一次状态
-            setInterval(updateStatus, 5000);
-            // 每10秒更新一次日志
-            setInterval(loadLogs, 10000);
-            // 每30秒更新一次缓存信息
-            setInterval(getCacheInfo, 30000);
-            // 每3秒更新一次时间轴，实现实时刷新
-            setInterval(loadTimeline, 3000);
+            // 使用递归setTimeout替代setInterval，防止请求堆积
             
-            // 每3秒检查一次是否需要自动播放下一首
-            setInterval(checkAndAutoPlayNext, 3000);
-            // 每15秒检查一次文件列表是否有更新
-            setInterval(checkAndUpdateFileList, 15000);
+            // 状态更新循环 (5秒)
+            function scheduleStatusUpdate() {
+                setTimeout(() => {
+                    updateStatus().finally(scheduleStatusUpdate);
+                }, 5000);
+            }
+            scheduleStatusUpdate();
+            
+            // 日志更新循环 (15秒)
+            function scheduleLogUpdate() {
+                setTimeout(() => {
+                    loadLogs().finally(scheduleLogUpdate);
+                }, 15000);
+            }
+            scheduleLogUpdate();
+            
+            // 缓存信息更新循环 (60秒)
+            function scheduleCacheUpdate() {
+                setTimeout(() => {
+                    getCacheInfo().finally(scheduleCacheUpdate);
+                }, 60000);
+            }
+            scheduleCacheUpdate();
+            
+            // 时间轴更新循环 (8秒)
+            function scheduleTimelineUpdate() {
+                setTimeout(() => {
+                    loadTimeline().finally(scheduleTimelineUpdate);
+                }, 8000);
+            }
+            scheduleTimelineUpdate();
+            
+            // 自动播放检查循环 (5秒)
+            function scheduleAutoPlayCheck() {
+                setTimeout(() => {
+                    checkAndAutoPlayNext().finally(scheduleAutoPlayCheck);
+                }, 5000);
+            }
+            scheduleAutoPlayCheck();
+            
+            // 文件列表更新循环 (30秒)
+            function scheduleFileListUpdate() {
+                setTimeout(() => {
+                    checkAndUpdateFileList().finally(scheduleFileListUpdate);
+                }, 30000);
+            }
+            scheduleFileListUpdate();
             
             // 搜索框回车事件
             document.getElementById('search-input').addEventListener('keypress', function(e) {

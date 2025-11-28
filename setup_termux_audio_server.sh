@@ -31,7 +31,7 @@ pip install Flask flask-cors
 
 # 创建项目目录
 echo "📁 创建项目目录..."
-rm -rf ~/termux-audio-server/
+rm -rf ~/termux-audio-server
 mkdir -p ~/termux-audio-server
 
 # 克隆GitHub仓库

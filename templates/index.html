@@ -7,7 +7,8 @@
     <title>🎵 音频控制面板 - Premium Edition</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 
@@ -29,7 +30,6 @@
                 <div>🎵 当前播放</div>
                 <div id="current-file">无</div>
                 <div>播放状态: <span id="play-status">未播放</span></div>
-                <div>音量: <span id="volume">0</span>%</div>
             </div>
         </div>
 
@@ -44,19 +44,21 @@
             </div>
         </div>
 
+        <!-- 音量控制 -->
+        <div class="volume-control">
+            <div class="volume-icon">🔈</div>
+            <div class="volume-slider-container">
+                <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50"
+                    oninput="adjustVolume(this.value)">
+            </div>
+            <span id="volume-value">50%</span>
+        </div>
+
         <!-- 控制按钮 -->
         <div class="controls">
             <button class="control-btn secondary" onclick="prevTrack()">⏮️</button>
             <button class="control-btn primary" onclick="pauseToggle()">⏯️</button>
             <button class="control-btn secondary" onclick="nextTrack()">⏭️</button>
-        </div>
-
-        <!-- 音量控制 -->
-        <div class="volume-control">
-            <span>🔈 音量:</span>
-            <input type="range" id="volume-slider" class="volume-slider" min="0" max="100" value="50"
-                oninput="adjustVolume(this.value)">
-            <span id="volume-value" class="volume-value">50%</span>
         </div>
 
         <!-- 搜索框 -->
@@ -117,6 +119,14 @@
     </div>
 
     <script>
+        // 控制按钮状态
+        function setControlsState(disabled) {
+            const buttons = document.querySelectorAll('.control-btn');
+            buttons.forEach(btn => {
+                btn.disabled = disabled;
+            });
+        }
+
         // 更新状态信息
         function updateStatus() {
             return fetch('/mpv/status')
@@ -140,19 +150,17 @@
                     // 修复音量显示问题：总是更新音量显示，除非用户正在主动调整
                     // 这样可以确保显示正确的音量值
                     var volumeValue = Math.round(data.volume) || 0;
-                    console.log('Updating volume display:', volumeValue);
-                    document.getElementById('volume').textContent = volumeValue;
-                    document.getElementById('volume-slider').value = volumeValue;
-                    document.getElementById('volume-value').textContent = volumeValue;
+                    // console.log('Updating volume display:', volumeValue);
+                    // 只有当用户没有拖动滑块时才更新滑块位置，避免跳变
+                    // 但这里简单起见，我们总是更新，因为adjustVolume会立即更新UI
+                    const slider = document.getElementById('volume-slider');
+                    if (document.activeElement !== slider) {
+                        slider.value = volumeValue;
+                    }
+                    document.getElementById('volume-value').textContent = volumeValue + '%';
                 })
                 .catch(function (error) {
                     console.error('Error updating status:', error);
-                    // 出错时也更新UI，显示错误状态
-                    document.getElementById('current-file').textContent = '无';
-                    document.getElementById('play-status').textContent = '未播放';
-                    document.getElementById('volume').textContent = '0';
-                    document.getElementById('volume-slider').value = '50';
-                    document.getElementById('volume-value').textContent = '50';
                 });
         }
 
@@ -232,6 +240,17 @@
         }
 
         function nextTrack() {
+            // 立即禁用按钮
+            setControlsState(true);
+
+            // 显示加载遮罩
+            const overlay = document.getElementById('loading-overlay');
+            const filenameDisplay = document.getElementById('loading-filename');
+            if (overlay && filenameDisplay) {
+                filenameDisplay.textContent = "正在切换下一首...";
+                overlay.style.display = 'flex';
+            }
+
             // 停止之前的进度轮询（如果有）
             if (progressPollingInterval) {
                 stopProgressPolling();
@@ -248,10 +267,19 @@
                     console.log('Next Track Response:', data);
                     if (data.status === 'error') {
                         alert('操作失败: ' + data.message);
+                        // 出错时恢复按钮和隐藏遮罩
+                        setControlsState(false);
+                        if (overlay) overlay.style.display = 'none';
                     } else {
                         // 如果有任务ID，开始轮询进度
                         if (data.task_id) {
                             pollDownloadProgress(data.task_id, data.next_file);
+                        } else {
+                            // 如果是本地文件，很快就播放了
+                            setTimeout(() => {
+                                setControlsState(false);
+                                if (overlay) overlay.style.display = 'none';
+                            }, 500);
                         }
 
                         // 更新状态、日志和时间轴
@@ -263,6 +291,50 @@
                 .catch(error => {
                     console.error('API Error:', error);
                     alert('API调用失败: ' + error.message);
+                    setControlsState(false);
+                    if (overlay) overlay.style.display = 'none';
+                });
+        }
+
+        function prevTrack() {
+            // 立即禁用按钮
+            setControlsState(true);
+
+            // 显示遮罩
+            const overlay = document.getElementById('loading-overlay');
+            const filenameDisplay = document.getElementById('loading-filename');
+            if (overlay && filenameDisplay) {
+                filenameDisplay.textContent = "正在切换上一首...";
+                overlay.style.display = 'flex';
+            }
+
+            fetch('/mpv/prev')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // 恢复状态
+                    setTimeout(() => {
+                        setControlsState(false);
+                        if (overlay) overlay.style.display = 'none';
+                    }, 500);
+
+                    if (data.status === 'error') {
+                        alert('操作失败: ' + data.message);
+                    } else {
+                        setTimeout(updateStatus, 500);
+                        loadLogs();
+                        loadTimeline();
+                    }
+                })
+                .catch(error => {
+                    console.error('API Error:', error);
+                    alert('API调用失败: ' + error.message);
+                    setControlsState(false);
+                    if (overlay) overlay.style.display = 'none';
                 });
         }
 
@@ -330,10 +402,18 @@
                                 stopProgressPolling();
                                 // 更新状态
                                 setTimeout(updateStatus, 500);
+                                // 下载完成，恢复按钮和隐藏遮罩
+                                setControlsState(false);
+                                const overlay = document.getElementById('loading-overlay');
+                                if (overlay) overlay.style.display = 'none';
                             } else if (data.download_status === 'error') {
                                 console.error('Download error:', data.error);
                                 stopProgressPolling();
                                 alert('下载失败: ' + data.error);
+                                // 出错恢复
+                                setControlsState(false);
+                                const overlay = document.getElementById('loading-overlay');
+                                if (overlay) overlay.style.display = 'none';
                             }
                         }
                     })
@@ -343,19 +423,10 @@
             }, 500); // 每0.5秒轮询一次
         }
 
-        function prevTrack() {
-            callAPI('/mpv/prev');
-        }
-
-        // 这些功能已被移除但保留函数定义以避免错误
-        function stopPlayback() { }
-        function shufflePlaylist() { }
-
-        function playTrack(index) {
-            callAPI(`/mpv/play/${index}`);
-        }
-
         function playFileByName(filename) {
+            // 禁用按钮
+            setControlsState(true);
+
             // 显示全屏加载遮罩
             const overlay = document.getElementById('loading-overlay');
             const filenameDisplay = document.getElementById('loading-filename');
@@ -373,8 +444,9 @@
                     return response.json();
                 })
                 .then(data => {
-                    // 隐藏加载遮罩
+                    // 隐藏加载遮罩并恢复按钮
                     if (overlay) overlay.style.display = 'none';
+                    setControlsState(false);
 
                     if (data.status === 'ok') {
                         console.log('播放成功:', data);
@@ -391,8 +463,9 @@
                     }
                 })
                 .catch(error => {
-                    // 隐藏加载遮罩
+                    // 隐藏加载遮罩并恢复按钮
                     if (overlay) overlay.style.display = 'none';
+                    setControlsState(false);
 
                     console.error('播放失败:', error);
                     alert('播放失败: ' + error.message);
@@ -430,9 +503,8 @@
         function adjustVolume(value) {
             console.log('Adjusting volume to:', value);
             // 立即更新所有音量显示元素，确保即时反馈
-            document.getElementById('volume').textContent = value;
-            document.getElementById('volume-value').textContent = value;
-            document.getElementById('volume-slider').value = value;
+            document.getElementById('volume-value').textContent = value + '%';
+            // document.getElementById('volume-slider').value = value; // 不用设置自己
 
             // 发送API请求设置音量
             fetch('/mpv/volume/set?value=' + value)
@@ -446,12 +518,8 @@
                 })
                 .catch(function (error) {
                     console.error('音量设置失败:', error);
-                    // 出错时仍然保持UI更新，因为用户可能已经调整了滑块
                 });
         }
-
-        // 同步文件功能已被移除
-        function syncFiles() { }
 
         // 日志相关函数
         function loadLogs() {
@@ -601,7 +669,7 @@
             return fetch('/mpv/status')
                 .then(response => response.json())
                 .then(data => {
-                    console.log('Auto-play check:', data);
+                    // console.log('Auto-play check:', data);
 
                     // 确保current_file是字符串类型
                     const currentFile = typeof data.current_file === 'string' ? data.current_file : '';
@@ -620,14 +688,7 @@
                     const isFileChanged = hasCurrentFile && lastCurrentFile && currentFile !== lastCurrentFile;
 
                     if (isNearEndOfPlayback || isFileEnded) {
-                        console.log('检测到播放结束或接近结束，当前状态:', {
-                            isNearEndOfPlayback,
-                            isFileEnded,
-                            currentFile,
-                            lastFile: lastCurrentFile,
-                            position: data.position,
-                            duration: data.duration
-                        });
+                        console.log('检测到播放结束或接近结束，当前状态:', { isNearEndOfPlayback, isFileEnded, currentFile, lastFile: lastCurrentFile, position: data.position, duration: data.duration });
 
                         // 直接调用后端的next_track API，与手动点击下一首按钮保持一致
                         fetch('/mpv/next')
@@ -759,9 +820,8 @@
             // 立即初始化状态显示
             document.getElementById('current-file').textContent = '无';
             document.getElementById('play-status').textContent = '未播放';
-            document.getElementById('volume').textContent = '0';
+            document.getElementById('volume-value').textContent = '50%';
             document.getElementById('volume-slider').value = '50';
-            document.getElementById('volume-value').textContent = '50';
 
             // 加载数据
             updateStatus();

@@ -886,11 +886,17 @@ def next_track():
         
         # 获取当前播放的文件名
         current_file, _ = get_mpv_property("filename")
+        
+        # 如果获取filename失败，尝试从path属性获取
         if not current_file:
-            # 如果获取filename失败，尝试从path属性获取
             path, _ = get_mpv_property("path")
             if path:
                 current_file = os.path.basename(path)
+                
+        # 如果MPV返回空且我们有全局记录，使用全局记录（处理播放结束进入空闲状态的情况）
+        if not current_file and current_playing_file:
+            current_file = current_playing_file
+            app.logger.info(f"MPV当前无文件，使用全局记录的文件计算下一首: {current_file}")
         
         # 获取NAS上的所有音频文件列表
         all_files, message = rclone_list_files()
@@ -996,11 +1002,17 @@ def prev_track():
         
         # 获取当前播放的文件名
         current_file, _ = get_mpv_property("filename")
+        
+        # 如果获取filename失败，尝试从path属性获取
         if not current_file:
-            # 如果获取filename失败，尝试从path属性获取
             path, _ = get_mpv_property("path")
             if path:
                 current_file = os.path.basename(path)
+                
+        # 如果MPV返回空且我们有全局记录，使用全局记录
+        if not current_file and current_playing_file:
+            current_file = current_playing_file
+            app.logger.info(f"MPV当前无文件，使用全局记录的文件计算上一首: {current_file}")
         
         # 获取NAS上的所有音频文件列表
         all_files, message = rclone_list_files()

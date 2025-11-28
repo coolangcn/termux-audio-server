@@ -997,7 +997,7 @@ def prev_track():
             prev_file = random.choice(all_files)
         
         # 从缓存或NAS获取文件
-        success, local_path, message = get_file_from_cache_or_nas(prev_file)
+        success, local_path, message, _ = get_file_from_cache_or_nas(prev_file)
         
         if not success:
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
@@ -1145,7 +1145,7 @@ def play_track(index):
 def play_file(filename):
     """播放指定文件（按需从NAS拉取）"""
     # 从缓存或NAS获取文件
-    success, local_path, message = get_file_from_cache_or_nas(filename)
+    success, local_path, message, _ = get_file_from_cache_or_nas(filename)
     
     if not success:
         return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
@@ -1217,7 +1217,7 @@ def build_playlist():
         # 逐个添加文件到播放列表
         files_added = 0
         for filename in all_files:
-            success, local_path, message = get_file_from_cache_or_nas(filename)
+            success, local_path, message, _ = get_file_from_cache_or_nas(filename)
             if success:
                 success, msg = send_mpv_command(["loadfile", local_path, "append"])
                 if success:

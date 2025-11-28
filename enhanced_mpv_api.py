@@ -440,13 +440,23 @@ def rclone_list_files():
         rclone_remote = "synology:download/bilibili/push"
         app.logger.debug(f"[RCLONE] 使用远程路径: {rclone_remote}")
         
-        # 使用rclone lsjson获取文件列表 - 添加更详细的日志记录
-        cmd = f"rclone lsjson '{rclone_remote}' --include '*.mp4' --include '*.mp3' --include '*.flac' --include '*.ogg' --include '*.aac' --include '*.m4a' --include '*.wav' --include '*.webm'"
-        app.logger.debug(f"[RCLONE] 执行命令: {cmd}")
+        # 使用rclone lsjson获取文件列表 - 使用参数列表避免shell注入风险
+        cmd_args = [
+            'rclone', 'lsjson', rclone_remote,
+            '--include', '*.mp4',
+            '--include', '*.mp3',
+            '--include', '*.flac',
+            '--include', '*.ogg',
+            '--include', '*.aac',
+            '--include', '*.m4a',
+            '--include', '*.wav',
+            '--include', '*.webm'
+        ]
+        app.logger.debug(f"[RCLONE] 执行命令: {' '.join(cmd_args)}")
         
         import subprocess
         start_time = time.time()
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        result = subprocess.run(cmd_args, capture_output=True, text=True)
         execution_time = time.time() - start_time
         
         app.logger.debug(f"[RCLONE] 命令执行完成，返回码: {result.returncode}，执行时间: {execution_time:.2f}秒")
@@ -543,8 +553,13 @@ def rclone_copy_file(remote_path, local_path, task_id=None):
         if task_id:
             try:
                 import subprocess
-                size_cmd = f"rclone size '{remote_file}' --json"
-                size_result = subprocess.run(size_cmd, shell=True, capture_output=True, text=True, timeout=10)
+                # 使用参数列表而不是shell命令，避免空格问题
+                size_result = subprocess.run(
+                    ['rclone', 'size', remote_file, '--json'],
+                    capture_output=True,
+                    text=True,
+                    timeout=10
+                )
                 if size_result.returncode == 0:
                     size_data = json.loads(size_result.stdout)
                     total_size = size_data.get('bytes', 0)
@@ -568,8 +583,9 @@ def rclone_copy_file(remote_path, local_path, task_id=None):
         app.logger.debug(f"[RCLONE] 确保本地目录存在: {os.path.dirname(local_path)}")
         
         import subprocess
-        cmd = f"rclone copyto '{remote_file}' '{local_path}'"
-        app.logger.debug(f"[RCLONE] 执行命令: {cmd}")
+        # 使用参数列表而不是shell命令，这样可以正确处理包含空格的文件名
+        cmd_args = ['rclone', 'copyto', remote_file, local_path]
+        app.logger.debug(f"[RCLONE] 执行命令: {' '.join(cmd_args)}")
         
         # 在后台线程中执行下载，同时监控进度
         download_complete = threading.Event()
@@ -578,7 +594,8 @@ def rclone_copy_file(remote_path, local_path, task_id=None):
         def download_worker():
             try:
                 start_time = time.time()
-                result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+                # 不使用shell=True，直接传递参数列表
+                result = subprocess.run(cmd_args, capture_output=True, text=True)
                 execution_time = time.time() - start_time
                 
                 app.logger.debug(f"[RCLONE] 命令执行完成，返回码: {result.returncode}，执行时间: {execution_time:.2f}秒")

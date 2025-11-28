@@ -855,15 +855,20 @@ def pause_toggle():
     idle, _ = get_mpv_property("idle-active")
     filename, _ = get_mpv_property("filename")
     
-    # 如果是空闲状态或没有文件名，则视为未播放，执行播放下一首的操作
-    if idle is True or not filename:
-        operation_logger.info("检测到MPV空闲，'暂停'按钮触发播放操作")
+    # 使用全局变量作为后备检查
+    global current_playing_file
+    is_really_playing = (filename and filename.strip()) or (current_playing_file and current_playing_file.strip())
+    
+    # 只有在明确是空闲状态且确实没有在播放文件时，才执行下一首
+    # 如果获取属性失败但我们记录中正在播放，优先尝试发送暂停命令
+    if idle is True and not is_really_playing:
+        operation_logger.info("检测到MPV空闲且无文件播放，'暂停'按钮触发播放操作")
         return next_track()
         
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息
-        current_file_info = current_playing_file or "未知文件"
+        current_file_info = filename or current_playing_file or "未知文件"
         # 记录到时间轴
         add_to_timeline(
             "pause_toggle", 
@@ -1175,6 +1180,10 @@ def play_file(filename):
     # 首先尝试将文件添加到播放列表并播放
     success, message = send_mpv_command(["loadfile", local_path, "replace"])
     if success:
+        # 立即更新全局当前播放文件
+        global current_playing_file
+        current_playing_file = filename
+        
         return jsonify({
             "status": "ok", 
             "action": "play_file", 
@@ -1286,6 +1295,11 @@ def get_status():
             filename = ""
             app.logger.debug("[状态获取] filename为None，设置为空字符串")
         
+        # 如果MPV没返回文件名，尝试使用全局变量
+        if not filename and current_playing_file:
+            filename = current_playing_file
+            app.logger.debug(f"[状态获取] MPV未返回文件名，使用全局变量: {filename}")
+
         if not filename:  # 如果filename为空，尝试获取path属性
             app.logger.debug("[状态获取] filename为空，尝试获取path属性")
             path, path_msg = get_mpv_property("path")

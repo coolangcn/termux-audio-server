@@ -152,28 +152,28 @@ def send_mpv_command(command):
     operation_logger.debug(f"[MPV命令] 构建的JSON命令: {json_command}")
     
     # 使用 socat 执行命令
-    # cmd = f'echo \'{json_command}\' | socat -t 0 - UNIX-CONNECT:{MPV_SOCKET_PATH}'
-    # operation_logger.debug(f"[MPV命令] 执行的系统命令: {cmd}")
+    # 转义单引号，防止 shell 注入或语法错误
+    safe_json_command = json_command.replace("'", "'\\''")
+    # 使用 subprocess.run(shell=True) 以便正确处理管道，同时使用 Python 的 timeout
+    cmd = f"echo '{safe_json_command}' | socat -t 0 - UNIX-CONNECT:{MPV_SOCKET_PATH}"
+    operation_logger.debug(f"[MPV命令] 执行的系统命令: {cmd}")
     
     try:
-        # 使用 subprocess.run 替代 os.system 以支持超时
-        operation_logger.debug(f"[MPV命令] 准备发送命令: {command}")
-        
-        # 构建 socat 命令
-        # 注意：这里我们通过 stdin 传递 json_command
         result = subprocess.run(
-            ['socat', '-t', '0', '-', f'UNIX-CONNECT:{MPV_SOCKET_PATH}'],
-            input=json_command,
-            text=True,
+            cmd,
+            shell=True,
+            timeout=2,
             capture_output=True,
-            timeout=2  # 设置2秒超时
+            text=True
         )
         
         operation_logger.debug(f"[MPV命令] subprocess返回码: {result.returncode}")
         if result.stdout:
             operation_logger.debug(f"[MPV命令] 标准输出: {result.stdout.strip()}")
+        
+        # 即使成功，如果有 stderr 也记录下来，可能是警告
         if result.stderr:
-            operation_logger.debug(f"[MPV命令] 标准错误: {result.stderr.strip()}")
+            operation_logger.error(f"[MPV命令] 标准错误: {result.stderr.strip()}")
         
         if result.returncode == 0:
             operation_logger.debug(f"[MPV命令] 命令 '{command}' 发送成功")
@@ -186,10 +186,6 @@ def send_mpv_command(command):
     except subprocess.TimeoutExpired:
         error_msg = f"Timeout (2s) when sending MPV command: {command}"
         operation_logger.error(f"[MPV命令] {error_msg}")
-        return False, error_msg
-    except Exception as e:
-        error_msg = f"Exception when sending MPV command: {str(e)}"
-        operation_logger.error(f"[MPV命令] {error_msg}", exc_info=True)
         return False, error_msg
 
 def add_to_timeline(action, description, details=None):

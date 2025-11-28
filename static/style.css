@@ -1,0 +1,674 @@
+/* 获奖级别UI设计 - 现代音乐播放器 */
+
+/* CSS变量系统 */
+:root {
+    /* 高级配色 */
+    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --secondary-gradient: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    --success-gradient: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+    --dark-gradient: linear-gradient(135deg, #2d3561 0%, #1f2041 100%);
+    
+    /* 玻璃态效果 */
+    --glass-bg: rgba(255, 255, 255, 0.95);
+    --glass-border: rgba(255, 255, 255, 0.18);
+    --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.15);
+    
+    /* 间距系统 */
+    --spacing-xs: 4px;
+    --spacing-sm: 8px;
+    --spacing-md: 16px;
+    --spacing-lg: 24px;
+    --spacing-xl: 32px;
+    
+    /* 圆角系统 */
+    --radius-sm: 8px;
+    --radius-md: 16px;
+    --radius-lg: 24px;
+    --radius-xl: 32px;
+    --radius-full: 9999px;
+    
+    /* 阴影系统 */
+    --shadow-sm: 0 2px 8px rgba(0,0,0,0.08);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
+    --shadow-lg: 0 8px 32px rgba(0,0,0,0.16);
+    --shadow-xl: 0 12px 48px rgba(0,0,0,0.20);
+    --shadow-glow: 0 0 30px rgba(102, 126, 234, 0.5);
+    --shadow-glow-pink: 0 0 30px rgba(240, 147, 251, 0.5);
+}
+
+/* 关键帧动画 */
+@keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+}
+
+@keyframes pulse {
+    0%, 100% { 
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7);
+    }
+    50% { 
+        transform: scale(1.05);
+        box-shadow: 0 0 0 10px rgba(102, 126, 234, 0);
+    }
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideInRight {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes rotate {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+    0% { background-position: -1000px 0; }
+    100% { background-position: 1000px 0; }
+}
+
+@keyframes gradientShift {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+}
+
+/* 基础样式 */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+    background-size: 400% 400%;
+    animation: gradientShift 15s ease infinite;
+    color: #1a1a1a;
+    max-width: 800px; /* 增加宽度以适应更多内容 */
+    margin: 0 auto;
+    padding: var(--spacing-lg);
+    min-height: 100vh;
+    position: relative;
+}
+
+/* 背景装饰 */
+body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: float 20s ease-in-out infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.container {
+    position: relative;
+    z-index: 1;
+    animation: fadeInUp 0.8s ease-out;
+}
+
+h1 {
+    text-align: center;
+    color: white;
+    font-size: 32px;
+    margin-bottom: var(--spacing-xl);
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    text-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    animation: fadeInUp 0.6s ease-out;
+}
+
+/* 玻璃态卡片 */
+.glass-card {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: var(--radius-xl);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
+    padding: var(--spacing-lg);
+    margin-bottom: var(--spacing-lg);
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glass-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 48px 0 rgba(31, 38, 135, 0.25);
+}
+
+/* 音乐信息卡片 - 带封面 */
+.status {
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.95) 0%, rgba(118, 75, 162, 0.95) 100%);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    color: white;
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-xl);
+    margin-bottom: var(--spacing-lg);
+    text-align: center;
+    box-shadow: var(--shadow-glow);
+    position: relative;
+    overflow: hidden;
+    animation: fadeInUp 0.8s ease-out 0.2s both;
+}
+
+.status::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+    animation: rotate 20s linear infinite;
+}
+
+.status-content {
+    position: relative;
+    z-index: 1;
+}
+
+/* 虚拟音乐封面 */
+.album-cover {
+    width: 120px;
+    height: 120px;
+    margin: 0 auto var(--spacing-md);
+    border-radius: var(--radius-full);
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 0 0 8px rgba(255,255,255,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 48px;
+    position: relative;
+    animation: pulse 3s ease-in-out infinite;
+}
+
+.album-cover::after {
+    content: '';
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    background: rgba(255,255,255,0.3);
+    border-radius: 50%;
+}
+
+.status div {
+    margin: var(--spacing-sm) 0;
+    font-weight: 500;
+}
+
+#current-file {
+    font-size: 20px;
+    font-weight: 700;
+    margin-top: var(--spacing-md);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+#play-status {
+    font-size: 16px;
+    opacity: 0.95;
+    font-weight: 600;
+}
+
+#volume {
+    font-weight: 700;
+    font-size: 18px;
+}
+
+/* 下载进度条样式 - 增强版 */
+.progress-container {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md);
+    animation: slideInRight 0.5s ease-out;
+}
+
+.progress-info {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+    font-size: 14px;
+    color: #333;
+    font-weight: 600;
+}
+
+.progress-filename {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: var(--spacing-md);
+}
+
+.progress-percent {
+    font-weight: 700;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.progress-bar-bg {
+    height: 10px;
+    background: rgba(0,0,0,0.1);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+    position: relative;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: var(--primary-gradient);
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    width: 0%;
+    border-radius: var(--radius-full);
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-bar-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+    animation: shimmer 2s infinite;
+}
+
+/* 控制按钮区域 */
+.controls {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-xl);
+    animation: fadeInUp 1s ease-out 0.4s both;
+}
+
+.control-btn {
+    border: none;
+    border-radius: var(--radius-full);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+.control-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.control-btn:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+.control-btn.primary {
+    background: var(--primary-gradient);
+    color: white;
+    width: 70px;
+    height: 70px;
+    font-size: 28px;
+    box-shadow: var(--shadow-glow);
+}
+
+.control-btn.primary:hover {
+    transform: scale(1.1);
+    box-shadow: 0 0 40px rgba(102, 126, 234, 0.6);
+}
+
+.control-btn.primary:active {
+    transform: scale(0.95);
+}
+
+.control-btn.secondary {
+    background: var(--glass-bg);
+    backdrop-filter: blur(10px);
+    color: #667eea;
+    width: 56px;
+    height: 56px;
+    font-size: 20px;
+    border: 2px solid rgba(102, 126, 234, 0.3);
+    box-shadow: var(--shadow-md);
+}
+
+.control-btn.secondary:hover {
+    transform: scale(1.05);
+    border-color: rgba(102, 126, 234, 0.6);
+    box-shadow: var(--shadow-lg);
+}
+
+.control-btn.secondary:active {
+    transform: scale(0.95);
+}
+
+/* 音量控制 */
+.volume-control {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--spacing-lg);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md);
+    animation: fadeInUp 1.2s ease-out 0.6s both;
+}
+
+.volume-control span {
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+}
+
+.volume-slider {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 8px;
+    border-radius: var(--radius-full);
+    background: linear-gradient(to right, #667eea 0%, #764ba2 100%);
+    outline: none;
+    opacity: 0.9;
+    transition: opacity 0.3s;
+}
+
+.volume-slider:hover {
+    opacity: 1;
+}
+
+.volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: all 0.3s;
+}
+
+.volume-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.volume-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: white;
+    cursor: pointer;
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    transition: all 0.3s;
+}
+
+.volume-slider::-moz-range-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.volume-value {
+    min-width: 45px;
+    text-align: right;
+    font-weight: 700;
+    background: var(--primary-gradient);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-size: 16px;
+}
+
+/* 搜索框 */
+.search-box {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    gap: var(--spacing-sm);
+    animation: fadeInUp 1.4s ease-out 0.8s both;
+}
+
+.search-box input {
+    flex: 1;
+    padding: 12px 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    background: rgba(255,255,255,0.5);
+    transition: all 0.3s;
+}
+
+.search-box input:focus {
+    outline: none;
+    background: rgba(255,255,255,0.8);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+}
+
+.search-box button {
+    background: var(--primary-gradient);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    padding: 12px 24px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.search-box button:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.search-box button:active {
+    transform: translateY(0);
+}
+
+/* 文件列表 */
+.file-list {
+    animation: fadeInUp 1.6s ease-out 1s both;
+}
+
+.file-list h3 {
+    font-size: 18px;
+    margin-bottom: var(--spacing-md);
+    color: white;
+    font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.file-items {
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--shadow-md);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.file-item {
+    padding: 16px;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    cursor: pointer;
+    transition: all 0.3s;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+}
+
+.file-item:last-child {
+    border-bottom: none;
+}
+
+.file-item:hover {
+    background: rgba(102, 126, 234, 0.1);
+    padding-left: 24px;
+}
+
+.file-item::before {
+    content: '🎵';
+    font-size: 20px;
+}
+
+/* 按钮通用样式 */
+.action-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s;
+}
+
+.action-btn.primary {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: var(--shadow-sm);
+}
+
+.action-btn.danger {
+    background: linear-gradient(135deg, #ff9a9e 0%, #fecfef 99%, #fecfef 100%);
+    color: #d63031;
+    box-shadow: var(--shadow-sm);
+}
+
+.action-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+/* 缓存和日志区域 */
+.section-card {
+    margin-top: var(--spacing-xl);
+}
+
+.section-card h3 {
+    font-size: 18px;
+    margin-bottom: var(--spacing-md);
+    color: white;
+    font-weight: 700;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.info-container {
+    background: white;
+    border-radius: var(--radius-md);
+    padding: 15px;
+    height: 150px;
+    overflow-y: auto;
+    font-family: monospace;
+    font-size: 12px;
+    border: 1px solid rgba(0,0,0,0.05);
+    color: #333;
+}
+
+/* 时间轴样式 */
+.timeline-item {
+    padding: 8px 0;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.timeline-time {
+    color: #667eea;
+    font-weight: bold;
+    margin-right: 8px;
+}
+
+.timeline-file {
+    color: #764ba2;
+    font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 480px) {
+    body {
+        padding: var(--spacing-md);
+    }
+    
+    h1 {
+        font-size: 24px;
+    }
+    
+    .control-btn.primary {
+        width: 60px;
+        height: 60px;
+        font-size: 24px;
+    }
+    
+    .control-btn.secondary {
+        width: 48px;
+        height: 48px;
+        font-size: 18px;
+    }
+    
+    .album-cover {
+        width: 100px;
+        height: 100px;
+    }
+}

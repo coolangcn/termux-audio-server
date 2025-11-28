@@ -221,7 +221,7 @@ def load_timeline():
 
 
 # 时间轴相关API端点
-@app.route('/timeline', methods=['GET'])
+@app.route('/mpv/timeline', methods=['GET'])
 @log_operation("获取时间轴")
 def get_timeline():
     """获取时间轴数据"""
@@ -242,7 +242,7 @@ def get_timeline():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route('/timeline/clear', methods=['POST'])
+@app.route('/mpv/timeline/clear', methods=['POST'])
 @log_operation("清空时间轴")
 def clear_timeline():
     """清空时间轴数据"""

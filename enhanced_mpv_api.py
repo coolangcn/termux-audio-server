@@ -24,7 +24,7 @@ except Exception as e:
 
 # 配置控制台实时日志记录 - 设置为INFO级别以减少日志输出
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.ERROR,
     format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -33,11 +33,11 @@ logging.basicConfig(
 
 # 保留Flask的默认日志，但调整级别
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.INFO)
+log.setLevel(logging.ERROR)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
-app.logger.setLevel(logging.INFO)
+app.logger.setLevel(logging.ERROR)
 
 # MPV Socket路径
 MPV_SOCKET_PATH = "/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
@@ -71,11 +71,11 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # 创建专门的操作日志记录器
 operation_logger = logging.getLogger('operations')
-operation_logger.setLevel(logging.INFO)
+operation_logger.setLevel(logging.ERROR)
 
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
+console_handler.setLevel(logging.ERROR)
 console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION:%(filename)s:%(lineno)d] - %(message)s'))
 operation_logger.addHandler(console_handler)
 

@@ -22,9 +22,9 @@ except Exception as e:
     print(f"Import error: {e}")
     sys.exit(1)
 
-# 配置控制台实时日志记录 - 设置为INFO级别以减少日志输出
+# 配置控制台实时日志记录 - 设置为DEBUG级别以输出详细调试信息
 logging.basicConfig(
-    level=logging.ERROR,
+    level=logging.DEBUG,
     format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s',
     handlers=[
         logging.StreamHandler()
@@ -33,11 +33,11 @@ logging.basicConfig(
 
 # 保留Flask的默认日志，但调整级别
 log = logging.getLogger('werkzeug')
-log.setLevel(logging.ERROR)
+log.setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
-app.logger.setLevel(logging.ERROR)
+app.logger.setLevel(logging.DEBUG)
 
 # MPV Socket路径
 MPV_SOCKET_PATH = "/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
@@ -48,6 +48,10 @@ LOCAL_DIR = "/data/data/com.termux/files/home/nas_audio_cache"
 # 自动缓存线程控制
 auto_cache_thread = None
 auto_cache_running = False
+
+# 播放结束监控线程控制
+playback_monitor_thread = None
+playback_monitor_running = False
 
 # 下载进度跟踪
 download_progress = {}  # {task_id: {filename, total_size, current_size, status, error, start_time}}
@@ -71,11 +75,11 @@ os.makedirs(LOG_DIR, exist_ok=True)
 
 # 创建专门的操作日志记录器
 operation_logger = logging.getLogger('operations')
-operation_logger.setLevel(logging.ERROR)
+operation_logger.setLevel(logging.DEBUG)
 
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.ERROR)
+console_handler.setLevel(logging.DEBUG)
 console_handler.setFormatter(logging.Formatter('%(asctime)s - [OPERATION:%(filename)s:%(lineno)d] - %(message)s'))
 operation_logger.addHandler(console_handler)
 
@@ -138,7 +142,7 @@ def send_mpv_command(command):
     if not os.path.exists(MPV_SOCKET_PATH):
         extra = f" ({MPV_RUNTIME_ERROR})" if MPV_RUNTIME_ERROR else ""
         error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?{extra}"
-        operation_logger.error(f"[MPV命令] {error_msg}")
+        operation_logger.debug(f"[MPV命令] {error_msg}")
         return False, error_msg
     
     # 记录socket文件权限信息以帮助排查权限问题
@@ -173,19 +177,23 @@ def send_mpv_command(command):
         
         # 即使成功，如果有 stderr 也记录下来，可能是警告
         if result.stderr:
-            operation_logger.error(f"[MPV命令] 标准错误: {result.stderr.strip()}")
+            operation_logger.debug(f"[MPV命令] 标准错误: {result.stderr.strip()}")
         
         if result.returncode == 0:
             operation_logger.debug(f"[MPV命令] 命令 '{command}' 发送成功")
             return True, "Command sent successfully."
         else:
             error_msg = f"Failed to send command via socat, return code: {result.returncode}, stderr: {result.stderr.strip()}"
-            operation_logger.error(f"[MPV命令] {error_msg}")
+            operation_logger.debug(f"[MPV命令] {error_msg}")
             return False, error_msg
             
     except subprocess.TimeoutExpired:
         error_msg = f"Timeout (2s) when sending MPV command: {command}"
-        operation_logger.error(f"[MPV命令] {error_msg}")
+        operation_logger.debug(f"[MPV命令] {error_msg}")
+        return False, error_msg
+    except Exception as e:
+        error_msg = f"Exception when sending MPV command: {str(e)}"
+        operation_logger.debug(f"[MPV命令] {error_msg}")
         return False, error_msg
 
 def add_to_timeline(action, description, details=None):
@@ -297,7 +305,16 @@ def get_mpv_property(property_name):
     if not os.path.exists(MPV_SOCKET_PATH):
         extra = f" ({MPV_RUNTIME_ERROR})" if MPV_RUNTIME_ERROR else ""
         error_msg = f"MPV Socket not found at {MPV_SOCKET_PATH}. Is MPV running?{extra}"
-        operation_logger.error(f"[MPV属性] {error_msg}")
+        operation_logger.debug(f"[MPV属性] {error_msg}")
+        # 为不同属性返回合理的默认值
+        if property_name == "filename":
+            return "", error_msg
+        elif property_name == "volume":
+            return 100, error_msg  # 默认音量100%
+        elif property_name in ["time-pos", "duration"]:
+            return 0, error_msg  # 默认播放位置和持续时间为0
+        elif property_name in ["pause", "eof-reached", "idle-active"]:
+            return False, error_msg  # 默认非暂停、未到文件末尾、非空闲
         return None, error_msg
     
     # 构建JSON命令
@@ -337,45 +354,87 @@ def get_mpv_property(property_name):
                         return response['data'], "Success"
                     elif 'error' in response:
                         operation_logger.warning(f"[MPV属性] MPV属性错误 {property_name}: {response['error']}")
-                        # 对于filename属性，如果出错则返回空字符串而不是None
+                        # 对于不同属性返回合理的默认值
                         if property_name == "filename":
                             operation_logger.debug(f"[MPV属性] filename属性出错，返回空字符串")
                             return "", "MPV error but returning empty string for filename"
+                        elif property_name == "volume":
+                            return 100, f"MPV error but returning default volume"
+                        elif property_name in ["time-pos", "duration"]:
+                            return 0, f"MPV error but returning default value for {property_name}"
+                        elif property_name in ["pause", "eof-reached", "idle-active"]:
+                            return False, f"MPV error but returning default value for {property_name}"
                         return None, f"MPV error: {response['error']}"
                     else:
                         operation_logger.warning(f"[MPV属性] 响应中既没有data也没有error字段: {response}")
                         if property_name == "filename":
                             return "", "No data or error but returning empty string for filename"
+                        elif property_name == "volume":
+                            return 100, f"No data or error but returning default volume"
+                        elif property_name in ["time-pos", "duration"]:
+                            return 0, f"No data or error but returning default value for {property_name}"
+                        elif property_name in ["pause", "eof-reached", "idle-active"]:
+                            return False, f"No data or error but returning default value for {property_name}"
                         return None, "Response contains neither data nor error"
                 except json.JSONDecodeError:
                     operation_logger.error(f"[MPV属性] 解析MPV响应失败: {response_text}")
-                    # 对于filename属性，解析失败时返回空字符串
+                    # 对于不同属性返回合理的默认值
                     if property_name == "filename":
                         return "", "Failed to parse but returning empty string for filename"
+                    elif property_name == "volume":
+                        return 100, f"Failed to parse but returning default volume"
+                    elif property_name in ["time-pos", "duration"]:
+                        return 0, f"Failed to parse but returning default value for {property_name}"
+                    elif property_name in ["pause", "eof-reached", "idle-active"]:
+                        return False, f"Failed to parse but returning default value for {property_name}"
                     return None, "Failed to parse MPV response"
             else:
                 operation_logger.warning(f"[MPV属性] 从MPV收到空响应，属性: {property_name}")
-                # 对于filename属性，空响应时返回空字符串
+                # 对于不同属性返回合理的默认值
                 if property_name == "filename":
                     return "", "Empty response but returning empty string for filename"
+                elif property_name == "volume":
+                    return 100, f"Empty response but returning default volume"
+                elif property_name in ["time-pos", "duration"]:
+                    return 0, f"Empty response but returning default value for {property_name}"
+                elif property_name in ["pause", "eof-reached", "idle-active"]:
+                    return False, f"Empty response but returning default value for {property_name}"
                 return None, "Empty response from MPV"
         else:
             operation_logger.warning(f"[MPV属性] 获取属性 {property_name} 失败, 返回码: {result.returncode}, 错误输出: {result.stderr}")
-            # 对于filename属性，命令失败时返回空字符串
+            # 对于不同属性返回合理的默认值
             if property_name == "filename":
                 return "", "Command failed but returning empty string for filename"
+            elif property_name == "volume":
+                return 100, f"Command failed but returning default volume"
+            elif property_name in ["time-pos", "duration"]:
+                return 0, f"Command failed but returning default value for {property_name}"
+            elif property_name in ["pause", "eof-reached", "idle-active"]:
+                return False, f"Command failed but returning default value for {property_name}"
             return None, f"Command failed with return code {result.returncode}"
     except subprocess.TimeoutExpired:
         operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 超时")
-        # 对于filename属性，超时时返回空字符串
+        # 对于不同属性返回合理的默认值
         if property_name == "filename":
             return "", "Timeout but returning empty string for filename"
+        elif property_name == "volume":
+            return 100, f"Timeout but returning default volume"
+        elif property_name in ["time-pos", "duration"]:
+            return 0, f"Timeout but returning default value for {property_name}"
+        elif property_name in ["pause", "eof-reached", "idle-active"]:
+            return False, f"Timeout but returning default value for {property_name}"
         return None, "Timeout getting MPV property"
     except Exception as e:
         operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 异常: {str(e)}", exc_info=True)
-        # 对于filename属性，异常时返回空字符串
+        # 对于不同属性返回合理的默认值
         if property_name == "filename":
             return "", "Exception but returning empty string for filename"
+        elif property_name == "volume":
+            return 100, f"Exception but returning default volume"
+        elif property_name in ["time-pos", "duration"]:
+            return 0, f"Exception but returning default value for {property_name}"
+        elif property_name in ["pause", "eof-reached", "idle-active"]:
+            return False, f"Exception but returning default value for {property_name}"
         return None, str(e)
 
 def get_audio_files():
@@ -766,6 +825,97 @@ def auto_cache_worker():
             app.logger.error(f"[AUTO_CACHE] 自动缓存出错: {str(e)}", exc_info=True)
             # 出错后仍然继续，避免线程退出
             time.sleep(600)  # 出错后也等待10分钟
+
+
+def playback_monitor_worker():
+    """播放结束监控工作线程 - 检测播放结束并自动播放下一首"""
+    global playback_monitor_running, current_playing_file
+    app.logger.info("[PLAYBACK_MONITOR] 播放结束监控线程已启动")
+    
+    # 检查间隔时间（秒）
+    check_interval = 0.5  # 缩短检查间隔，提高响应速度
+    
+    # 用于跟踪状态变化
+    last_status = {
+        'eof_reached': False,
+        'idle_active': False,
+        'paused': False,
+        'playing_file': current_playing_file
+    }
+    
+    while playback_monitor_running:
+        try:
+            # 检查MPV是否正在运行
+            mpv_running = os.path.exists(MPV_SOCKET_PATH)
+            
+            if not mpv_running:
+                # MPV未运行，重置状态
+                if last_status['playing_file']:
+                    app.logger.info("[PLAYBACK_MONITOR] MPV已停止运行")
+                    current_playing_file = ""
+                    last_status['playing_file'] = ""
+                time.sleep(check_interval)
+                continue
+            
+            # 获取MPV状态 - 增加重试机制
+            max_retries = 3
+            retry_count = 0
+            eof_reached = None
+            idle_active = None
+            paused = None
+            filename = None
+            
+            while retry_count < max_retries:
+                try:
+                    eof_reached, _ = get_mpv_property("eof-reached")
+                    idle_active, _ = get_mpv_property("idle-active")
+                    paused, _ = get_mpv_property("pause")
+                    filename, _ = get_mpv_property("filename")
+                    break
+                except Exception as retry_e:
+                    retry_count += 1
+                    app.logger.debug(f"[PLAYBACK_MONITOR] 获取MPV状态重试 {retry_count}/{max_retries}: {str(retry_e)}")
+                    time.sleep(0.1)  # 短暂等待后重试
+            
+            # 确保值为布尔类型
+            eof_reached = bool(eof_reached)
+            idle_active = bool(idle_active)
+            paused = bool(paused) if paused is not None else False
+            filename = filename or ""
+            
+            # 更新当前播放文件
+            if filename and filename != last_status['playing_file']:
+                app.logger.info(f"[PLAYBACK_MONITOR] 播放文件变更: {last_status['playing_file']} -> {filename}")
+                current_playing_file = filename
+                last_status['playing_file'] = filename
+                # 重置EOF状态，新文件开始播放
+                last_status['eof_reached'] = False
+            
+            # 检测播放结束条件：
+            # 1. 达到文件末尾 (eof-reached = true)
+            # 2. 处于空闲状态 (idle-active = true) 且不是暂停状态
+            # 3. 当前有播放文件（避免MPV刚启动时触发）
+            if (eof_reached or idle_active) and not paused and last_status['playing_file']:
+                # 只有状态发生变化时才触发
+                if not last_status['eof_reached']:
+                    app.logger.info("[PLAYBACK_MONITOR] 检测到播放结束，自动播放下一首")
+                    # 调用下一首函数
+                    next_track()
+                    # 更新状态
+                    last_status['eof_reached'] = True
+            elif not eof_reached and not idle_active:
+                # 重置EOF状态，准备下一次检测
+                last_status['eof_reached'] = False
+            
+            # 更新状态跟踪
+            last_status['idle_active'] = idle_active
+            last_status['paused'] = paused
+            
+            time.sleep(check_interval)
+        except Exception as e:
+            app.logger.error(f"[PLAYBACK_MONITOR] 播放监控出错: {str(e)}", exc_info=True)
+            # 出错后仍然继续，避免线程退出
+            time.sleep(check_interval)
 
 @app.route('/cache/auto', methods=['POST'])
 @log_operation("控制自动缓存")
@@ -1756,9 +1906,66 @@ def web_control_panel():
     """网页控制面板"""
     return render_template('index.html')
 
+def start_playback_monitor():
+    """启动播放结束监控线程"""
+    global playback_monitor_thread, playback_monitor_running
+    
+    if not playback_monitor_running:
+        playback_monitor_running = True
+        playback_monitor_thread = threading.Thread(target=playback_monitor_worker, daemon=True)
+        playback_monitor_thread.start()
+        app.logger.info("[PLAYBACK_MONITOR] 播放结束监控服务已启动")
+    
+    return True, "播放结束监控服务已启动"
+
+
+def stop_playback_monitor():
+    """停止播放结束监控线程"""
+    global playback_monitor_thread, playback_monitor_running
+    
+    if playback_monitor_running:
+        playback_monitor_running = False
+        if playback_monitor_thread:
+            playback_monitor_thread.join(timeout=5)  # 等待线程结束，最多5秒
+        app.logger.info("[PLAYBACK_MONITOR] 播放结束监控服务已停止")
+    
+    return True, "播放结束监控服务已停止"
+
+
+@app.route('/monitor/playback', methods=['POST'])
+@log_operation("控制播放监控")
+def control_playback_monitor():
+    """控制播放结束监控服务的启动和停止"""
+    try:
+        action = request.args.get('action', '').lower()
+        
+        if action == 'start':
+            success, message = start_playback_monitor()
+            return jsonify({"status": "ok", "message": message}), 200
+        elif action == 'stop':
+            success, message = stop_playback_monitor()
+            return jsonify({"status": "ok", "message": message}), 200
+        elif action == 'status':
+            return jsonify({
+                "status": "ok",
+                "running": playback_monitor_running,
+                "thread_alive": playback_monitor_thread.is_alive() if playback_monitor_thread else False
+            }), 200
+        else:
+            return jsonify({"status": "error", "message": "无效的操作，支持的操作: start, stop, status"}), 400
+            
+    except Exception as e:
+        app.logger.error(f"[PLAYBACK_MONITOR] 控制播放监控服务时出错: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 if __name__ == '__main__':
     # 注意：0.0.0.0 允许从外部设备访问
     import os
+    
+    # 启动播放结束监控线程
+    start_playback_monitor()
+    
     API_PORT = int(os.environ.get('API_PORT', 5000))
     print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")
     app.run(host='0.0.0.0', port=API_PORT, debug=False, threaded=True)

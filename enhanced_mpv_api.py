@@ -196,6 +196,8 @@ def add_to_timeline(action, description, details=None):
     """添加事件到时间轴"""
     global timeline_events
     
+    operation_logger.info(f"[DEBUG_TIMELINE] Adding event: {action}")
+    
     event = {
         "timestamp": datetime.now().isoformat(),
         "action": action,
@@ -203,9 +205,12 @@ def add_to_timeline(action, description, details=None):
         "details": details or {}
     }
     
+    operation_logger.info("[DEBUG_TIMELINE] Acquiring timeline_lock")
     with timeline_lock:
+        operation_logger.info("[DEBUG_TIMELINE] timeline_lock acquired")
         timeline_events.append(event)
         save_timeline()
+        operation_logger.info("[DEBUG_TIMELINE] Event saved, releasing lock")
     
     operation_logger.debug(f"[时间轴] 添加事件: {action} - {description}")
 
@@ -838,18 +843,30 @@ def get_download_progress(task_id):
 @app.route('/mpv/pause', methods=['GET'])
 @log_operation("播放/暂停切换")
 def pause_toggle():
-    success, message = send_mpv_command(["cycle", "pause"])
-    if success:
-        # 获取当前播放文件信息
-        current_file_info = current_playing_file or "未知文件"
-        # 记录到时间轴
-        add_to_timeline(
-            "pause_toggle", 
-            "播放/暂停切换", 
-            {"current_file": current_file_info}
-        )
-        return jsonify({"status": "ok", "action": "pause_toggle"}), 200
-    return jsonify({"status": "error", "message": message}), 500
+    operation_logger.info("[DEBUG_PAUSE] Entering pause_toggle")
+    try:
+        operation_logger.info("[DEBUG_PAUSE] Calling send_mpv_command(['cycle', 'pause'])")
+        success, message = send_mpv_command(["cycle", "pause"])
+        operation_logger.info(f"[DEBUG_PAUSE] send_mpv_command returned: success={success}, message={message}")
+        
+        if success:
+            # 获取当前播放文件信息
+            current_file_info = current_playing_file or "未知文件"
+            # 记录到时间轴
+            operation_logger.info("[DEBUG_PAUSE] Calling add_to_timeline")
+            add_to_timeline(
+                "pause_toggle", 
+                "播放/暂停切换", 
+                {"current_file": current_file_info}
+            )
+            operation_logger.info("[DEBUG_PAUSE] add_to_timeline returned")
+            return jsonify({"status": "ok", "action": "pause_toggle"}), 200
+        
+        operation_logger.error(f"[DEBUG_PAUSE] send_mpv_command failed: {message}")
+        return jsonify({"status": "error", "message": message}), 500
+    except Exception as e:
+        operation_logger.error(f"[DEBUG_PAUSE] Exception in pause_toggle: {str(e)}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")

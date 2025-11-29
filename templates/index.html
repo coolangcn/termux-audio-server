@@ -145,7 +145,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         // 控制按钮状态
         function setControlsState(disabled) {
@@ -155,63 +154,6 @@
             });
         }
 
-        // WebSocket连接和处理逻辑
-        let socket;
-        
-        function initWebSocket() {
-            // 获取当前页面的协议和主机
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.host;
-            const socketUrl = `${protocol}//${host}`;
-            
-            console.log(`Connecting to WebSocket server at ${socketUrl}...`);
-            
-            // 初始化SocketIO连接
-            socket = io(socketUrl, {
-                transports: ['websocket'],
-                reconnection: true,
-                reconnectionAttempts: 5,
-                reconnectionDelay: 1000
-            });
-            
-            // 连接成功事件
-            socket.on('connect', () => {
-                console.log('✅ WebSocket connected');
-            });
-            
-            // 接收进度更新事件
-            socket.on('progress_update', (data) => {
-                console.log('Received progress update:', data);
-                
-                // 更新进度显示
-                updateProgressDisplay(data.position, data.duration);
-                
-                // 更新播放状态
-                const currentFile = typeof data.filename === 'string' ? data.filename : '';
-                const hasCurrentFile = currentFile && currentFile.trim() !== '';
-                document.getElementById('current-file').textContent = hasCurrentFile ? currentFile : '无';
-                
-                if (!hasCurrentFile) {
-                    document.getElementById('play-status').textContent = '未播放';
-                } else {
-                    document.getElementById('play-status').textContent = data.is_paused ? '已暂停' : '正在播放';
-                }
-            });
-            
-            // 连接错误事件
-            socket.on('connect_error', (error) => {
-                console.error('❌ WebSocket connection error:', error);
-            });
-            
-            // 断开连接事件
-            socket.on('disconnect', () => {
-                console.log('❌ WebSocket disconnected');
-            });
-        }
-        
-        // 初始化WebSocket连接
-        initWebSocket();
-        
         // 更新状态信息
         function updateStatus() {
             return fetch('/mpv/status')

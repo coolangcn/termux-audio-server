@@ -16,7 +16,6 @@ try:
     from collections import deque
     from flask import Flask, request, jsonify, render_template
     from flask_cors import CORS
-    from flask_socketio import SocketIO, emit
     import logging.config
     print("All imports successful!")
 except Exception as e:
@@ -39,9 +38,6 @@ log.setLevel(logging.DEBUG)
 app = Flask(__name__)
 CORS(app)  # 允许跨域请求
 app.logger.setLevel(logging.DEBUG)
-
-# 创建SocketIO实例
-socketio = SocketIO(app, cors_allowed_origins="*")
 
 # MPV Socket路径
 MPV_SOCKET_PATH = "/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket"
@@ -1178,19 +1174,6 @@ def playback_monitor_worker():
             # 更新状态跟踪
             last_status['progress'] = current_progress
             last_status['paused'] = is_paused
-            
-            # 通过WebSocket推送进度信息
-            try:
-                socketio.emit('progress_update', {
-                    'position': current_position,
-                    'duration': current_duration,
-                    'progress': current_progress,
-                    'is_paused': is_paused,
-                    'is_playing': is_playing,
-                    'filename': filename
-                })
-            except Exception as e:
-                app.logger.debug(f"[WEBSOCKET] 推送进度信息失败: {str(e)}")
             
             time.sleep(check_interval)
         except Exception as e:
@@ -3004,5 +2987,4 @@ if __name__ == '__main__':
     
     API_PORT = int(os.environ.get('API_PORT', 5000))
     print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")
-    print("✅ WebSocket support enabled")
-    socketio.run(app, host='0.0.0.0', port=API_PORT, debug=False)
+    app.run(host='0.0.0.0', port=API_PORT, debug=False, threaded=True)

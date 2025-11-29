@@ -67,6 +67,14 @@ TIMELINE_MAX_EVENTS = 500  # 最大事件数量
 timeline_events = deque(maxlen=TIMELINE_MAX_EVENTS)
 current_playing_file = ""
 next_playing_file = ""
+
+# 自己记录的播放状态
+self_recorded_state = {
+    "playing": False,  # 是否正在播放
+    "paused": True,    # 是否暂停
+    "current_file": "", # 当前播放的文件名
+    "volume": 100      # 当前音量
+}
 timeline_lock = threading.RLock()  # 用于线程安全
 
 # 配置操作日志
@@ -392,6 +400,16 @@ def get_mpv_property(property_name):
                 operation_logger.warning(f"[MPV属性] 从MPV收到空响应，属性: {property_name}")
                 # 对于不同属性返回合理的默认值
                 if property_name == "filename":
+                    # 特殊处理：如果收到空响应，尝试从path属性获取
+                    try:
+                        path, path_msg = get_mpv_property("path")
+                        if path and isinstance(path, str) and path.strip():
+                            filename_from_path = os.path.basename(path)
+                            operation_logger.debug(f"[MPV属性] 从path获取filename: {filename_from_path}")
+                            return filename_from_path, "Empty response but got filename from path"
+                    except Exception as e:
+                        operation_logger.debug(f"[MPV属性] 从path获取filename失败: {e}")
+                    # 如果从path获取失败，返回空字符串
                     return "", "Empty response but returning empty string for filename"
                 elif property_name == "volume":
                     return 100, f"Empty response but returning default volume"
@@ -404,6 +422,16 @@ def get_mpv_property(property_name):
             operation_logger.warning(f"[MPV属性] 获取属性 {property_name} 失败, 返回码: {result.returncode}, 错误输出: {result.stderr}")
             # 对于不同属性返回合理的默认值
             if property_name == "filename":
+                # 特殊处理：如果命令执行失败，尝试从path属性获取
+                try:
+                    path, path_msg = get_mpv_property("path")
+                    if path and isinstance(path, str) and path.strip():
+                        filename_from_path = os.path.basename(path)
+                        operation_logger.debug(f"[MPV属性] 从path获取filename: {filename_from_path}")
+                        return filename_from_path, "Command failed but got filename from path"
+                except Exception as e:
+                    operation_logger.debug(f"[MPV属性] 从path获取filename失败: {e}")
+                # 如果从path获取失败，返回空字符串
                 return "", "Command failed but returning empty string for filename"
             elif property_name == "volume":
                 return 100, f"Command failed but returning default volume"
@@ -416,6 +444,16 @@ def get_mpv_property(property_name):
         operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 超时")
         # 对于不同属性返回合理的默认值
         if property_name == "filename":
+            # 特殊处理：如果超时，尝试从path属性获取
+            try:
+                path, path_msg = get_mpv_property("path")
+                if path and isinstance(path, str) and path.strip():
+                    filename_from_path = os.path.basename(path)
+                    operation_logger.debug(f"[MPV属性] 从path获取filename: {filename_from_path}")
+                    return filename_from_path, "Timeout but got filename from path"
+            except Exception as e:
+                operation_logger.debug(f"[MPV属性] 从path获取filename失败: {e}")
+            # 如果从path获取失败，返回空字符串
             return "", "Timeout but returning empty string for filename"
         elif property_name == "volume":
             return 100, f"Timeout but returning default volume"
@@ -428,6 +466,16 @@ def get_mpv_property(property_name):
         operation_logger.error(f"[MPV属性] 获取MPV属性 {property_name} 异常: {str(e)}", exc_info=True)
         # 对于不同属性返回合理的默认值
         if property_name == "filename":
+            # 特殊处理：如果发生异常，尝试从path属性获取
+            try:
+                path, path_msg = get_mpv_property("path")
+                if path and isinstance(path, str) and path.strip():
+                    filename_from_path = os.path.basename(path)
+                    operation_logger.debug(f"[MPV属性] 从path获取filename: {filename_from_path}")
+                    return filename_from_path, "Exception but got filename from path"
+            except Exception as e:
+                operation_logger.debug(f"[MPV属性] 从path获取filename失败: {e}")
+            # 如果从path获取失败，返回空字符串
             return "", "Exception but returning empty string for filename"
         elif property_name == "volume":
             return 100, f"Exception but returning default volume"
@@ -1073,6 +1121,10 @@ def pause_toggle():
                 "播放/暂停切换", 
                 {"current_file": current_file_info, "pause_state": not pause_state}
             )
+            # 更新自己记录的状态
+            global self_recorded_state
+            self_recorded_state["paused"] = not pause_state
+            self_recorded_state["playing"] = not not pause_state
             return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
         else:
             # 如果发送命令失败，返回错误信息
@@ -1083,21 +1135,25 @@ def pause_toggle():
 @log_operation("下一首")
 def next_track():
     try:
-        global current_playing_file, next_playing_file
+        global current_playing_file, next_playing_file, self_recorded_state
         
-        # 获取当前播放的文件名
-        current_file, _ = get_mpv_property("filename")
+        # 获取当前播放的文件名 - 优先使用自己记录的状态
+        current_file = self_recorded_state["current_file"]
         
-        # 如果获取filename失败，尝试从path属性获取
+        # 如果自己记录的状态中没有文件名，尝试从MPV获取
         if not current_file:
-            path, _ = get_mpv_property("path")
-            if path:
-                current_file = os.path.basename(path)
-                
-        # 如果MPV返回空且我们有全局记录，使用全局记录（处理播放结束进入空闲状态的情况）
-        if not current_file and current_playing_file:
-            current_file = current_playing_file
-            app.logger.info(f"MPV当前无文件，使用全局记录的文件计算下一首: {current_file}")
+            current_file, _ = get_mpv_property("filename")
+            
+            # 如果获取filename失败，尝试从path属性获取
+            if not current_file:
+                path, _ = get_mpv_property("path")
+                if path:
+                    current_file = os.path.basename(path)
+                    
+            # 如果MPV返回空且我们有全局记录，使用全局记录
+            if not current_file and current_playing_file:
+                current_file = current_playing_file
+                app.logger.info(f"MPV当前无文件，使用全局记录的文件计算下一首: {current_file}")
         
         # 获取NAS上的所有音频文件列表
         all_files, message = rclone_list_files()
@@ -1132,7 +1188,13 @@ def next_track():
         
         # 更新全局变量
         old_file = current_playing_file
+        current_playing_file = next_file
         next_playing_file = next_file
+        
+        # 更新自己记录的状态
+        self_recorded_state["playing"] = True
+        self_recorded_state["paused"] = False
+        self_recorded_state["current_file"] = next_file
         
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
@@ -1245,6 +1307,13 @@ def prev_track():
         # 更新全局变量
         old_file = current_playing_file
         next_playing_file = prev_file
+        current_playing_file = prev_file
+        
+        # 更新自己记录的状态
+        global self_recorded_state
+        self_recorded_state["playing"] = True
+        self_recorded_state["paused"] = False
+        self_recorded_state["current_file"] = prev_file
         
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
@@ -1324,6 +1393,12 @@ def stop_playback():
         # 重置当前播放文件
         current_playing_file = ""
         
+        # 更新自己记录的状态
+        global self_recorded_state
+        self_recorded_state["playing"] = False
+        self_recorded_state["paused"] = True
+        self_recorded_state["current_file"] = ""
+        
         return jsonify({"status": "ok", "action": "stop"}), 200
     return jsonify({"status": "error", "message": message}), 500
 
@@ -1338,6 +1413,12 @@ def adjust_volume():
     success, message = send_mpv_command(["add", "volume", str(value)])
     
     if success:
+        # 更新自己记录的状态
+        global self_recorded_state
+        # 获取当前音量并更新
+        current_volume, _ = get_mpv_property("volume")
+        if current_volume is not None:
+            self_recorded_state["volume"] = current_volume
         return jsonify({"status": "ok", "action": "adjust_volume", "change": value}), 200
     return jsonify({"status": "error", "message": message}), 500
 
@@ -1353,6 +1434,9 @@ def set_volume():
     success, message = send_mpv_command(["set", "volume", str(value)])
     
     if success:
+        # 更新自己记录的状态
+        global self_recorded_state
+        self_recorded_state["volume"] = value
         return jsonify({"status": "ok", "action": "set_volume", "volume": value}), 200
     return jsonify({"status": "error", "message": message}), 500
 
@@ -1403,6 +1487,9 @@ def seek():
 @log_operation("播放指定文件")
 def play_file(filename):
     """播放指定文件（按需从NAS拉取）"""
+    # 声明全局变量
+    global current_playing_file, self_recorded_state
+    
     # 从缓存或NAS获取文件
     success, local_path, message, _ = get_file_from_cache_or_nas(filename)
     
@@ -1412,9 +1499,13 @@ def play_file(filename):
     # 首先尝试将文件添加到播放列表并播放
     success, message = send_mpv_command(["loadfile", local_path, "replace"])
     if success:
-        # 立即更新全局当前播放文件
-        global current_playing_file
+        # 立即更新全局当前播放文件和自己记录的状态
         current_playing_file = filename
+        
+        # 更新自己记录的状态
+        self_recorded_state["playing"] = True
+        self_recorded_state["paused"] = False
+        self_recorded_state["current_file"] = filename
         
         return jsonify({
             "status": "ok", 
@@ -1447,6 +1538,11 @@ def play_file(filename):
             "--really-quiet",  # 减少输出噪音
             local_path
         ])
+        
+        # 更新自己记录的状态
+        self_recorded_state["playing"] = True
+        self_recorded_state["paused"] = False
+        self_recorded_state["current_file"] = filename
         
         return jsonify({
             "status": "ok", 
@@ -1504,19 +1600,20 @@ def build_playlist():
 def get_status():
     """获取播放状态"""
     status = {}
-    global current_playing_file
+    global current_playing_file, self_recorded_state
     
     app.logger.debug("[状态获取] 开始获取MPV播放状态")
     
     try:
+        # 优先使用自己记录的状态
+        status.update(self_recorded_state)
+        
+        # 获取MPV状态作为补充
         # 获取播放状态
         app.logger.debug("[状态获取] 尝试获取pause属性")
         pause_state, pause_msg = get_mpv_property("pause")
         app.logger.debug(f"[状态获取] 获取pause属性结果: {pause_state}, 消息: {pause_msg}")
-        status["paused"] = pause_state if pause_state is not None else False
-        if pause_state is None:
-            app.logger.warning(f"[状态获取] 获取pause状态失败: {pause_msg}")
-            
+        
         # 获取 idle-active 状态 (是否空闲)
         idle_active, _ = get_mpv_property("idle-active")
         status["idle_active"] = idle_active if idle_active is not None else False
@@ -1535,6 +1632,10 @@ def get_status():
             filename = ""
             app.logger.debug("[状态获取] filename为None，设置为空字符串")
         
+        # 如果MPV返回了文件名，更新自己记录的状态
+        if filename and filename.strip():
+            self_recorded_state["current_file"] = filename
+        
         # 如果MPV没返回文件名，尝试使用全局变量
         if not filename and current_playing_file:
             filename = current_playing_file
@@ -1548,6 +1649,8 @@ def get_status():
                 # 从路径中提取文件名
                 filename = os.path.basename(path)
                 app.logger.debug(f"[状态获取] 从path提取文件名: {filename}")
+                # 更新自己记录的状态
+                self_recorded_state["current_file"] = filename
         
         # 如果还是没有，尝试media-title
         if not filename:
@@ -1557,6 +1660,8 @@ def get_status():
             if media_title:
                 filename = media_title
                 app.logger.debug(f"[状态获取] 使用media-title作为文件名: {filename}")
+                # 更新自己记录的状态
+                self_recorded_state["current_file"] = filename
         
         # 确保最终返回的文件名是字符串类型
         filename = filename if isinstance(filename, str) else ""
@@ -1578,7 +1683,10 @@ def get_status():
         app.logger.debug("[状态获取] 尝试获取volume属性")
         volume, volume_msg = get_mpv_property("volume")
         app.logger.debug(f"[状态获取] 获取volume属性结果: {volume}, 消息: {volume_msg}")
-        status["volume"] = volume if volume is not None else 0
+        if volume is not None:
+            status["volume"] = volume
+            # 更新自己记录的音量
+            self_recorded_state["volume"] = volume
         
         # 获取播放列表
         app.logger.debug("[状态获取] 尝试获取playlist属性")
@@ -1610,6 +1718,17 @@ def get_status():
     except Exception as e:
         app.logger.error(f"[状态获取] 获取状态时发生异常: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": f"获取状态失败: {str(e)}", "error_type": type(e).__name__}), 500
+
+
+@app.route('/mpv/status/self', methods=['GET'])
+@log_operation("获取自己记录的状态")
+def get_self_recorded_status():
+    """获取自己记录的播放状态"""
+    global self_recorded_state
+    app.logger.debug(f"[状态获取] 获取自己记录的状态: {self_recorded_state}")
+    return jsonify(self_recorded_state), 200
+
+
 
 @app.route('/files', methods=['GET'])
 @log_operation("列出文件列表")

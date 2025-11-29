@@ -966,12 +966,29 @@ def playback_monitor_worker():
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
             try:
-                # 获取MPV属性
-                position, _ = get_mpv_property("time-pos")
-                duration, _ = get_mpv_property("duration")
-                pause_state, _ = get_mpv_property("pause")
-                eof_reached, _ = get_mpv_property("eof-reached")
-                idle_active, _ = get_mpv_property("idle-active")
+                # 获取MPV属性，增强可靠性
+                max_retries = 3
+                retry_count = 0
+                position = None
+                duration = None
+                pause_state = None
+                eof_reached = None
+                idle_active = None
+                
+                # 重试获取MPV属性
+                while retry_count < max_retries:
+                    position, _ = get_mpv_property("time-pos")
+                    duration, _ = get_mpv_property("duration")
+                    pause_state, _ = get_mpv_property("pause")
+                    eof_reached, _ = get_mpv_property("eof-reached")
+                    idle_active, _ = get_mpv_property("idle-active")
+                    
+                    # 如果获取到了有效位置或时长，就退出重试
+                    if (position is not None and position > 0) or (duration is not None and duration > 0):
+                        break
+                    
+                    retry_count += 1
+                    time.sleep(0.1)  # 短暂等待后重试
                 
                 # 更新自己记录的状态
                 current_duration = duration if duration is not None else self_recorded_state["duration"]
@@ -1005,6 +1022,14 @@ def playback_monitor_worker():
                 if pause_state is not None:
                     self_recorded_state["paused"] = pause_state
                     self_recorded_state["playing"] = not pause_state
+                
+                # 额外的进度保护：如果MPV返回的位置与自己记录的位置差异过大，使用自己记录的位置
+                if position is not None and position > 0:
+                    position_diff = abs(position - self_recorded_state["position"])
+                    if position_diff > 1.0:  # 差异超过1秒，可能是MPV状态异常
+                        app.logger.warning(f"[PLAYBACK_MONITOR] MPV位置与自己记录的位置差异过大: {position_diff}秒，使用自己记录的位置")
+                        self_recorded_state["position"] = current_position
+                        current_position = self_recorded_state["position"]
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
                 # 继续执行，使用默认值
@@ -1071,15 +1096,39 @@ def playback_monitor_worker():
             playback_ended = False
             end_reason = ""
             
-            if eof_reached:
+            # 优化进度显示：在播放结束时确保进度显示为100%
+            if eof_reached or (idle_active and is_playing and not is_paused):
+                # 播放结束，确保进度显示为100%
+                current_progress = 100.0
+                current_position = current_duration
+                self_recorded_state["progress"] = current_progress
+                self_recorded_state["position"] = current_position
+                
                 playback_ended = True
-                end_reason = "eof-reached属性检测到播放结束"
-            elif idle_active and is_playing and not is_paused:
-                playback_ended = True
-                end_reason = "idle-active属性检测到播放结束"
-            elif current_duration > 0 and (current_progress >= 99.9 or (current_progress > 0 and current_progress == last_status['progress'] and current_progress > 95)):
-                playback_ended = True
-                end_reason = f"进度检测到播放结束（进度: {current_progress}%）"
+                if eof_reached:
+                    end_reason = "eof-reached属性检测到播放结束"
+                else:
+                    end_reason = "idle-active属性检测到播放结束"
+            elif current_duration > 0:
+                # 检查进度是否接近100%
+                if current_progress >= 99.9:
+                    # 进度接近100%，确保显示为100%
+                    current_progress = 100.0
+                    current_position = current_duration
+                    self_recorded_state["progress"] = current_progress
+                    self_recorded_state["position"] = current_position
+                    
+                    playback_ended = True
+                    end_reason = f"进度检测到播放结束（进度: {current_progress}%）"
+                elif current_progress > 0 and current_progress == last_status['progress'] and current_progress > 95:
+                    # 进度在95%以上且不再变化，认为播放结束
+                    current_progress = 100.0
+                    current_position = current_duration
+                    self_recorded_state["progress"] = current_progress
+                    self_recorded_state["position"] = current_position
+                    
+                    playback_ended = True
+                    end_reason = f"进度稳定检测到播放结束（进度: {current_progress}%）"
             elif not is_paused and is_playing and filename and last_status['time_pos_stable_count'] >= last_status['stable_threshold']:
                 # 适用于无法获取duration的情况
                 playback_ended = True
@@ -1974,10 +2023,29 @@ def get_status():
         app.logger.debug(f"[状态获取] 获取playlist属性结果: 类型={type(playlist).__name__}, 长度={len(playlist) if isinstance(playlist, list) else 'N/A'}")
         status["playlist"] = playlist if playlist is not None else []
         
-        # 获取播放位置和持续时间
+        # 获取播放位置和持续时间，增强可靠性
         app.logger.debug("[状态获取] 尝试获取time-pos属性")
-        position, position_msg = get_mpv_property("time-pos")
-        app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
+        
+        # 重试获取time-pos属性
+        max_time_pos_retries = 3
+        time_pos_retry_count = 0
+        position = None
+        position_msg = ""
+        
+        while time_pos_retry_count < max_time_pos_retries and (position is None or position == 0):
+            position, position_msg = get_mpv_property("time-pos")
+            app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
+            
+            if position is not None and position > 0:
+                break
+            
+            time_pos_retry_count += 1
+            time.sleep(0.1)  # 短暂等待后重试
+        
+        # 如果MPV无法返回有效位置，使用自己记录的位置
+        if position is None or position <= 0:
+            app.logger.debug("[状态获取] MPV无法返回有效位置，使用自己记录的位置")
+            position = self_recorded_state["position"]
         
         # 尝试获取duration属性，增加重试机制
         max_retries = 5
@@ -1996,9 +2064,14 @@ def get_status():
             retry_count += 1
             time.sleep(0.1)  # 短暂等待后重试
         
-        # 如果MPV无法返回有效时长，尝试使用文件路径获取时长
+        # 如果MPV无法返回有效时长，尝试使用自己记录的时长
         if duration is None or duration <= 0:
-            app.logger.debug("[状态获取] MPV无法返回有效时长，尝试使用文件路径获取")
+            app.logger.debug("[状态获取] MPV无法返回有效时长，使用自己记录的时长")
+            duration = self_recorded_state["duration"]
+        
+        # 如果自己记录的时长也无效，尝试使用文件路径获取时长
+        if duration is None or duration <= 0:
+            app.logger.debug("[状态获取] 自己记录的时长也无效，尝试使用文件路径获取")
             
             # 尝试获取当前播放文件的本地路径
             try:
@@ -2026,8 +2099,8 @@ def get_status():
                 app.logger.debug(f"[状态获取] 使用文件路径获取时长失败: {e}")
         
         # 添加进度相关信息到返回状态
-        current_position = position if position is not None else 0
-        current_duration = duration if duration is not None else 0
+        current_position = position if position is not None else self_recorded_state["position"]
+        current_duration = duration if duration is not None else self_recorded_state["duration"]
         
         # 计算播放进度百分比
         if current_duration and current_duration > 0:
@@ -2035,8 +2108,12 @@ def get_status():
             current_progress = round(current_progress, 2)
             app.logger.debug(f"[状态获取] 计算播放进度: {current_progress}%")
         else:
-            current_progress = 0
-            app.logger.debug(f"[状态获取] 无法计算进度，duration为0或无效: {current_duration}")
+            # 如果无法计算进度，使用自己记录的进度
+            current_progress = self_recorded_state["progress"]
+            app.logger.debug(f"[状态获取] 无法计算进度，使用自己记录的进度: {current_progress}%")
+        
+        # 确保进度在合理范围内
+        current_progress = max(0, min(100, current_progress))
         
         # 更新自己记录的进度状态
         self_recorded_state["position"] = current_position
@@ -2047,6 +2124,22 @@ def get_status():
         status["position"] = current_position
         status["duration"] = current_duration
         status["progress"] = current_progress
+        
+        # 添加自己记录的状态作为备用
+        status["self_recorded_position"] = self_recorded_state["position"]
+        status["self_recorded_duration"] = self_recorded_state["duration"]
+        status["self_recorded_progress"] = self_recorded_state["progress"]
+        
+        # 添加遮罩提醒信息
+        global current_mask_reminder
+        if current_mask_reminder:
+            # 检查提醒是否过期
+            if time.time() > current_mask_reminder['expires_at']:
+                current_mask_reminder = None
+            else:
+                status["mask_reminder"] = current_mask_reminder
+        else:
+            status["mask_reminder"] = None
         
         status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
         status["mpv_error"] = MPV_RUNTIME_ERROR or ""
@@ -2586,6 +2679,7 @@ mask_reminder_queue = []
 mask_reminder_last_sent = 0
 mask_reminder_cooldown = 0.5  # 遮罩提醒冷却时间（秒）
 mask_reminder_lock = threading.Lock()
+current_mask_reminder = None  # 当前遮罩提醒信息，用于前端获取
 
 def send_mask_reminder(message, action_type="general"):
     """发送遮罩提醒
@@ -2599,7 +2693,7 @@ def send_mask_reminder(message, action_type="general"):
     2. 短时间内的多个提醒会被合并处理
     3. 冷却时间内的提醒会被记录但不会立即发送
     """
-    global mask_reminder_queue, mask_reminder_last_sent, mask_reminder_cooldown, mask_reminder_lock
+    global mask_reminder_queue, mask_reminder_last_sent, mask_reminder_cooldown, mask_reminder_lock, current_mask_reminder
     
     try:
         with mask_reminder_lock:
@@ -2628,20 +2722,35 @@ def send_mask_reminder(message, action_type="general"):
                 app.logger.info(f"[MASK_REMINDER_QUEUED] [{action_type}] {message} (冷却中，已加入队列)")
                 return True, "提醒已加入队列，将在冷却后发送"
             
+            # 要发送的提醒列表
+            reminders_to_send = []
+            
             # 如果队列中有等待的提醒，先处理队列中的提醒
             if mask_reminder_queue:
                 # 优先处理最新的提醒
                 latest_reminder = mask_reminder_queue.pop()
-                # 记录并发送最新的提醒
-                app.logger.info(f"[MASK_REMINDER] [{latest_reminder['type']}] {latest_reminder['message']} (来自队列)")
-                mask_reminder_last_sent = current_time
+                reminders_to_send.append(latest_reminder)
+            
+            # 添加当前提醒
+            reminders_to_send.append({
+                'message': message,
+                'type': action_type,
+                'timestamp': current_time
+            })
+            
+            # 发送所有提醒
+            for reminder in reminders_to_send:
+                # 记录并发送提醒
+                app.logger.info(f"[MASK_REMINDER] [{reminder['type']}] {reminder['message']}")
                 
-                # 然后处理当前的提醒
-                app.logger.info(f"[MASK_REMINDER] [{action_type}] {message} (当前提醒)")
-                mask_reminder_last_sent = current_time
-            else:
-                # 直接发送当前提醒
-                app.logger.info(f"[MASK_REMINDER] [{action_type}] {message} (直接发送)")
+                # 更新当前遮罩提醒，用于前端获取
+                current_mask_reminder = {
+                    'message': reminder['message'],
+                    'type': reminder['type'],
+                    'timestamp': reminder['timestamp'],
+                    'expires_at': reminder['timestamp'] + 3  # 提醒3秒后自动过期
+                }
+                
                 mask_reminder_last_sent = current_time
         
         # 这里可以添加实际的遮罩提醒逻辑

@@ -962,6 +962,7 @@ def playback_monitor_worker():
                 last_status['progress'] = 0
                 last_status['time_pos'] = 0
                 last_status['time_pos_stable_count'] = 0
+                last_status['reminder_sent'] = False
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
             try:
@@ -1045,6 +1046,22 @@ def playback_monitor_worker():
             else:
                 last_status['time_pos_stable_count'] += 1
             
+            # 检测即将切换下一首的提醒条件
+            # 定义提醒阈值（进度达到95%时提醒）
+            REMINDER_THRESHOLD = 95.0
+            # 记录是否已经发送过提醒
+            if 'reminder_sent' not in last_status:
+                last_status['reminder_sent'] = False
+            
+            # 发送遮罩提醒
+            if (current_duration > 0 and current_progress >= REMINDER_THRESHOLD and not last_status['reminder_sent'] and is_playing and not is_paused):
+                # 发送遮罩提醒
+                app.logger.info(f"[NEXT_TRACK_REMINDER] 即将切换下一首歌曲：{filename}（进度: {current_progress}%）")
+                # 这里可以添加实际的遮罩提醒逻辑，比如发送API请求或触发其他通知
+                # 例如：send_mask_reminder(f"即将切换到下一首歌曲")
+                # 标记为已发送提醒
+                last_status['reminder_sent'] = True
+            
             # 检测播放结束条件，支持多种检测方法：
             # 1. 使用eof-reached属性（MPV直接报告播放结束）
             # 2. 使用idle-active属性（MPV进入空闲状态）
@@ -1101,26 +1118,48 @@ def control_auto_cache():
         
         if action == 'start':
             if not auto_cache_running:
+                # 发送遮罩提醒
+                send_mask_reminder("正在启动自动缓存服务", "auto_cache_start")
+                
                 # 启动自动缓存线程
                 app.logger.info("[AUTO_CACHE] 正在启动自动缓存服务")
                 auto_cache_running = True
                 auto_cache_thread = threading.Thread(target=auto_cache_worker, daemon=True)
                 auto_cache_thread.start()
+                
+                # 发送遮罩提醒
+                send_mask_reminder("自动缓存服务已启动", "auto_cache_start_success")
+                
                 return jsonify({"status": "ok", "message": "自动缓存服务已启动"}), 200
             else:
+                # 发送遮罩提醒
+                send_mask_reminder("自动缓存服务已经在运行", "auto_cache_already_running")
                 return jsonify({"status": "ok", "message": "自动缓存服务已经在运行"}), 200
         
         elif action == 'stop':
             if auto_cache_running:
+                # 发送遮罩提醒
+                send_mask_reminder("正在停止自动缓存服务", "auto_cache_stop")
+                
                 app.logger.info("[AUTO_CACHE] 正在停止自动缓存服务")
                 auto_cache_running = False
                 if auto_cache_thread:
                     auto_cache_thread.join(timeout=5)  # 等待线程结束，最多5秒
+                
+                # 发送遮罩提醒
+                send_mask_reminder("自动缓存服务已停止", "auto_cache_stop_success")
+                
                 return jsonify({"status": "ok", "message": "自动缓存服务已停止"}), 200
             else:
+                # 发送遮罩提醒
+                send_mask_reminder("自动缓存服务未运行", "auto_cache_not_running")
                 return jsonify({"status": "ok", "message": "自动缓存服务未运行"}), 200
         
         elif action == 'status':
+            status_msg = "自动缓存服务正在运行" if auto_cache_running else "自动缓存服务未运行"
+            # 发送遮罩提醒
+            send_mask_reminder(status_msg, "auto_cache_status")
+            
             return jsonify({
                 "status": "ok",
                 "running": auto_cache_running,
@@ -1128,9 +1167,14 @@ def control_auto_cache():
             }), 200
         
         else:
+            # 发送遮罩提醒
+            send_mask_reminder("无效的操作，支持的操作: start, stop, status", "auto_cache_error")
             return jsonify({"status": "error", "message": "无效的操作，支持的操作: start, stop, status"}), 400
             
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"控制自动缓存服务时出错: {str(e)}", "auto_cache_error")
+        
         app.logger.error(f"[AUTO_CACHE] 控制自动缓存服务时出错: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
@@ -1232,10 +1276,15 @@ def pause_toggle():
     if not has_playing_file:
         # 情况1：没有播放文件，直接播放下一首
         operation_logger.info("[播放控制] 没有播放文件，触发播放下一首")
+        # 发送遮罩提醒
+        send_mask_reminder("没有播放文件，触发播放下一首", "play_next")
         return next_track()
     else:
         # 情况2：有播放文件，切换播放/暂停状态
         operation_logger.info("[播放控制] 有播放文件，切换播放/暂停状态")
+        # 发送遮罩提醒
+        new_state = "暂停" if pause_state else "播放"
+        send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
         success, message = send_mpv_command(["cycle", "pause"])
         if success:
             # 获取当前播放文件信息
@@ -1255,6 +1304,7 @@ def pause_toggle():
         else:
             # 如果发送命令失败，返回错误信息
             operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")
+            send_mask_reminder(f"切换播放/暂停状态失败: {message}", "pause_toggle_error")
             return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/next', methods=['GET'])
@@ -1262,6 +1312,9 @@ def pause_toggle():
 def next_track():
     try:
         global current_playing_file, next_playing_file, self_recorded_state
+        
+        # 发送遮罩提醒
+        send_mask_reminder("正在切换到下一首歌曲", "next_track")
         
         # 获取当前播放的文件名 - 优先使用自己记录的状态
         current_file = self_recorded_state["current_file"]
@@ -1288,6 +1341,8 @@ def next_track():
             all_files = get_audio_files()
         
         if not all_files:
+            # 发送遮罩提醒
+            send_mask_reminder("没有找到音频文件", "next_track_error")
             return jsonify({"status": "error", "message": "No audio files found"}), 500
         
         # 找到下一首歌曲
@@ -1310,6 +1365,8 @@ def next_track():
         success, local_path, message, returned_task_id = get_file_from_cache_or_nas(next_file, task_id)
         
         if not success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"获取文件失败: {message}", "next_track_error")
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
         # 更新全局变量
@@ -1378,6 +1435,8 @@ def next_track():
                 "task_id": returned_task_id
             }), 200
         except Exception as e:
+        # 发送遮罩提醒
+            send_mask_reminder(f"播放文件失败: {str(e)}", "play_file_error")
             return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
     
     except Exception as e:
@@ -1388,6 +1447,9 @@ def next_track():
 def prev_track():
     try:
         global current_playing_file, next_playing_file
+        
+        # 发送遮罩提醒
+        send_mask_reminder("正在切换到上一首歌曲", "prev_track")
         
         # 获取当前播放的文件名
         current_file, _ = get_mpv_property("filename")
@@ -1410,6 +1472,8 @@ def prev_track():
             all_files = get_audio_files()
         
         if not all_files:
+            # 发送遮罩提醒
+            send_mask_reminder("没有找到音频文件", "prev_track_error")
             return jsonify({"status": "error", "message": "No audio files found"}), 500
         
         # 找到上一首歌曲
@@ -1428,6 +1492,8 @@ def prev_track():
         success, local_path, message, _ = get_file_from_cache_or_nas(prev_file)
         
         if not success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"获取文件失败: {message}", "prev_track_error")
             return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
         
         # 更新全局变量
@@ -1444,6 +1510,9 @@ def prev_track():
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"成功切换到上一首歌曲: {prev_file}", "prev_track_success")
+            
             # 记录到时间轴
             add_to_timeline(
                 "prev_track", 
@@ -1485,6 +1554,9 @@ def prev_track():
                 local_path
             ])
             
+            # 发送遮罩提醒
+            send_mask_reminder(f"成功切换到上一首歌曲: {prev_file} (重启MPV方式)", "prev_track_success")
+            
             return jsonify({
                 "status": "ok", 
                 "action": "prev_track",
@@ -1494,9 +1566,13 @@ def prev_track():
                 "method": "restart"
             }), 200
         except Exception as e:
+            # 发送遮罩提醒
+            send_mask_reminder(f"切换到上一首歌曲失败: {str(e)}", "prev_track_error")
             return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
     
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"切换到上一首歌曲失败: {str(e)}", "prev_track_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/stop', methods=['GET'])
@@ -1507,8 +1583,14 @@ def stop_playback():
     # 获取当前播放文件信息
     file_info = current_playing_file or "未知文件"
     
+    # 发送遮罩提醒
+    send_mask_reminder(f"正在停止播放: {file_info}", "stop_playback")
+    
     success, message = send_mpv_command(["quit"])
     if success:
+        # 发送遮罩提醒
+        send_mask_reminder(f"成功停止播放: {file_info}", "stop_playback_success")
+        
         # 记录到时间轴
         add_to_timeline(
             "stop", 
@@ -1526,6 +1608,8 @@ def stop_playback():
         self_recorded_state["current_file"] = ""
         
         return jsonify({"status": "ok", "action": "stop"}), 200
+    # 发送遮罩提醒
+    send_mask_reminder(f"停止播放失败: {message}", "stop_playback_error")
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/volume', methods=['GET'])
@@ -1536,6 +1620,9 @@ def adjust_volume():
     except ValueError:
         return jsonify({"status": "error", "message": "Query parameter 'value' must be an integer."}), 400
     
+    # 发送遮罩提醒
+    send_mask_reminder(f"正在调整音量: {'增加' if value > 0 else '减少'} {abs(value)}%")
+    
     success, message = send_mpv_command(["add", "volume", str(value)])
     
     if success:
@@ -1545,7 +1632,11 @@ def adjust_volume():
         current_volume, _ = get_mpv_property("volume")
         if current_volume is not None:
             self_recorded_state["volume"] = current_volume
+            # 发送遮罩提醒
+            send_mask_reminder(f"音量调整成功，当前音量: {current_volume}%")
         return jsonify({"status": "ok", "action": "adjust_volume", "change": value}), 200
+    # 发送遮罩提醒
+    send_mask_reminder(f"音量调整失败: {message}", "volume_error")
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/volume/set', methods=['GET'])
@@ -1557,37 +1648,60 @@ def set_volume():
     except ValueError:
         return jsonify({"status": "error", "message": "Query parameter 'value' must be an integer between 0 and 100."}), 400
     
+    # 发送遮罩提醒
+    send_mask_reminder(f"正在设置音量为: {value}%")
+    
     success, message = send_mpv_command(["set", "volume", str(value)])
     
     if success:
         # 更新自己记录的状态
         global self_recorded_state
         self_recorded_state["volume"] = value
+        # 发送遮罩提醒
+        send_mask_reminder(f"音量设置成功，当前音量: {value}%")
         return jsonify({"status": "ok", "action": "set_volume", "volume": value}), 200
+    # 发送遮罩提醒
+    send_mask_reminder(f"音量设置失败: {message}", "volume_error")
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/shuffle', methods=['GET'])
 @log_operation("随机播放")
 def shuffle_playlist():
     """随机播放"""
+    # 发送遮罩提醒
+    send_mask_reminder("正在随机打乱播放列表", "shuffle_playlist")
+    
     # 获取当前播放列表
     playlist, msg = get_mpv_property("playlist")
     if playlist is None:
+        # 发送遮罩提醒
+        send_mask_reminder("获取播放列表失败", "shuffle_error")
         return jsonify({"status": "error", "message": "Failed to get playlist"}), 500
     
     # 随机打乱播放列表
     success, message = send_mpv_command(["playlist-shuffle"])
     if success:
+        # 发送遮罩提醒
+        send_mask_reminder("播放列表随机打乱成功", "shuffle_success")
         return jsonify({"status": "ok", "action": "shuffle_playlist"}), 200
+    # 发送遮罩提醒
+    send_mask_reminder(f"播放列表随机打乱失败: {message}", "shuffle_error")
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/play/<int:index>', methods=['GET'])
 @log_operation("播放指定歌曲")
 def play_track(index):
     """播放指定索引的歌曲"""
+    # 发送遮罩提醒
+    send_mask_reminder(f"正在播放播放列表中索引为 {index} 的歌曲", "play_track")
+    
     success, message = send_mpv_command(["playlist-play-index", str(index)])
     if success:
+        # 发送遮罩提醒
+        send_mask_reminder(f"成功播放播放列表中索引为 {index} 的歌曲", "play_track_success")
         return jsonify({"status": "ok", "action": "play_track", "index": index}), 200
+    # 发送遮罩提醒
+    send_mask_reminder(f"播放播放列表中索引为 {index} 的歌曲失败: {message}", "play_track_error")
     return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/seek', methods=['GET'])
@@ -1599,14 +1713,23 @@ def seek():
         if not position:
             return jsonify({"status": "error", "message": "Missing position parameter"}), 400
             
+        # 发送遮罩提醒
+        send_mask_reminder(f"正在调整播放进度到 {position} 秒", "seek")
+            
         # 发送seek命令
         success, message = send_mpv_command(["seek", position, "absolute"])
         
         if success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"播放进度调整成功，当前位置: {position} 秒", "seek_success")
             return jsonify({"status": "ok", "action": "seek", "position": position}), 200
         else:
+            # 发送遮罩提醒
+            send_mask_reminder(f"播放进度调整失败: {message}", "seek_error")
             return jsonify({"status": "error", "message": message}), 500
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"播放进度调整失败: {str(e)}", "seek_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/play/file/<path:filename>', methods=['GET'])
@@ -1616,11 +1739,19 @@ def play_file(filename):
     # 声明全局变量
     global current_playing_file, self_recorded_state
     
+    # 发送遮罩提醒
+    send_mask_reminder(f"正在准备播放文件: {filename}", "play_file")
+    
     # 从缓存或NAS获取文件
     success, local_path, message, _ = get_file_from_cache_or_nas(filename)
     
     if not success:
+        # 发送遮罩提醒
+        send_mask_reminder(f"获取文件失败: {message}", "play_file_error")
         return jsonify({"status": "error", "message": f"Failed to get file: {message}"}), 500
+    
+    # 发送遮罩提醒
+    send_mask_reminder(f"文件获取成功，正在播放: {filename}", "play_file_start")
     
     # 首先尝试将文件添加到播放列表并播放
     success, message = send_mpv_command(["loadfile", local_path, "replace"])
@@ -1632,6 +1763,9 @@ def play_file(filename):
         self_recorded_state["playing"] = True
         self_recorded_state["paused"] = False
         self_recorded_state["current_file"] = filename
+        
+        # 发送遮罩提醒
+        send_mask_reminder(f"成功播放文件: {filename}", "play_file_success")
         
         return jsonify({
             "status": "ok", 
@@ -1670,6 +1804,9 @@ def play_file(filename):
         self_recorded_state["paused"] = False
         self_recorded_state["current_file"] = filename
         
+        # 发送遮罩提醒
+        send_mask_reminder(f"成功播放文件: {filename} (重启MPV方式)", "play_file_success")
+        
         return jsonify({
             "status": "ok", 
             "action": "play_file", 
@@ -1686,6 +1823,9 @@ def play_file(filename):
 def build_playlist():
     """构建完整播放列表"""
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在构建播放列表", "build_playlist")
+        
         # 获取所有音频文件
         all_files, message = rclone_list_files()
         if not all_files:
@@ -1693,6 +1833,8 @@ def build_playlist():
             all_files = get_audio_files()
         
         if not all_files:
+            # 发送遮罩提醒
+            send_mask_reminder("没有找到音频文件", "build_playlist_error")
             return jsonify({"status": "error", "message": "No audio files found"}), 500
         
         # 清空当前播放列表
@@ -1711,6 +1853,9 @@ def build_playlist():
                 else:
                     app.logger.warning(f"Failed to add to playlist: {filename}, error: {msg}")
         
+        # 发送遮罩提醒
+        send_mask_reminder(f"播放列表构建成功，共添加了 {files_added} 个文件，总文件数: {len(all_files)}", "build_playlist_success")
+        
         return jsonify({
             "status": "ok", 
             "action": "build_playlist", 
@@ -1719,6 +1864,8 @@ def build_playlist():
         }), 200
         
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"播放列表构建失败: {str(e)}", "build_playlist_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/mpv/status', methods=['GET'])
@@ -1959,21 +2106,35 @@ def sync_files():
     """手动同步NAS文件"""
     # 只允许同步单个文件，禁止同步所有文件
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在手动同步文件", "sync_files")
+        
         data = request.get_json() or {}
         filename = data.get('filename')
         
         if not filename:
             operation_logger.warning("[SYNC] 尝试同步所有文件，但已被禁止")
+            # 发送遮罩提醒
+            send_mask_reminder("尝试同步所有文件，但已被禁止", "sync_files_error")
             return jsonify({"status": "error", "message": "Syncing all files is not allowed"}), 403
         
         operation_logger.debug(f"[SYNC] 请求同步单个文件: {filename}")
+        # 发送遮罩提醒
+        send_mask_reminder(f"正在同步文件: {filename}", "sync_file")
+        
         success, message = rclone_sync(filename=filename)
             
         if success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"文件同步成功: {message}", "sync_file_success")
             return jsonify({"status": "ok", "message": "Sync completed successfully"}), 200
+        # 发送遮罩提醒
+        send_mask_reminder(f"文件同步失败: {message}", "sync_file_error")
         return jsonify({"status": "error", "message": message}), 500
     except Exception as e:
         operation_logger.error(f"[SYNC] 同步文件时出错: {str(e)}", exc_info=True)
+        # 发送遮罩提醒
+        send_mask_reminder(f"同步文件时出错: {str(e)}", "sync_files_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/files/cache', methods=['POST'])
@@ -1981,20 +2142,34 @@ def sync_files():
 def cache_file():
     """缓存指定的单个文件"""
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在缓存指定文件", "cache_file")
+        
         data = request.get_json() or {}
         filename = data.get('filename')
         
         if not filename:
+            # 发送遮罩提醒
+            send_mask_reminder("缺少文件名参数", "cache_file_error")
             return jsonify({"status": "error", "message": "Filename is required"}), 400
             
         operation_logger.debug(f"[CACHE] 请求缓存文件: {filename}")
+        # 发送遮罩提醒
+        send_mask_reminder(f"正在缓存文件: {filename}", "cache_file_start")
+        
         success, message = rclone_sync(filename=filename)
         
         if success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"文件缓存成功: {filename}", "cache_file_success")
             return jsonify({"status": "ok", "message": f"File '{filename}' cached successfully"}), 200
+        # 发送遮罩提醒
+        send_mask_reminder(f"文件缓存失败: {message}", "cache_file_error")
         return jsonify({"status": "error", "message": message}), 500
     except Exception as e:
         operation_logger.error(f"[CACHE] 缓存文件时出错: {str(e)}", exc_info=True)
+        # 发送遮罩提醒
+        send_mask_reminder(f"缓存文件时出错: {str(e)}", "cache_file_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 @app.route('/logs', methods=['GET'])
@@ -2018,6 +2193,9 @@ def get_logs():
 def clear_logs():
     """清空操作日志"""
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在清空操作日志", "clear_logs")
+        
         log_file = f"{LOG_DIR}/operations.log"
         
         # 确保日志目录存在
@@ -2043,6 +2221,9 @@ def clear_logs():
             # 记录清空操作
             operation_logger.info("操作日志已清空")
             
+            # 发送遮罩提醒
+            send_mask_reminder("日志已清空", "clear_logs_success")
+            
             return jsonify({"message": "日志已清空"}), 200
         else:
             # 如果文件不存在，创建空文件
@@ -2062,10 +2243,17 @@ def clear_logs():
             
             operation_logger.info("操作日志已清空（新建文件）")
             
+            # 发送遮罩提醒
+            send_mask_reminder("日志文件已创建并清空", "clear_logs_success")
+            
             return jsonify({"message": "日志文件已创建并清空"}), 200
     except Exception as e:
         # 记录错误到控制台
         print(f"清空日志时发生错误: {e}")
+        
+        # 发送遮罩提醒
+        send_mask_reminder(f"清空日志时发生错误: {str(e)}", "clear_logs_error")
+        
         return jsonify({"error": str(e)}), 500
 
 @app.route('/mcp/control', methods=['POST'])
@@ -2097,8 +2285,13 @@ def mcp_control():
     }
     """
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在处理MCP控制请求", "mcp_control")
+        
         data = request.json
         if not data or "action" not in data:
+            # 发送遮罩提醒
+            send_mask_reminder("MCP请求缺少必要的action字段", "mcp_control_error")
             return jsonify({
                 "status": "error",
                 "message": "Missing required field 'action'",
@@ -2108,6 +2301,9 @@ def mcp_control():
         action = data["action"]
         params = data.get("params", {})
         
+        # 发送遮罩提醒
+        send_mask_reminder(f"正在执行MCP操作: {action}", f"mcp_{action}")
+        
         # 执行相应的操作
         if action == "play":
             # 获取当前状态，如果已暂停则取消暂停，否则检查是否有正在播放的文件
@@ -2115,33 +2311,51 @@ def mcp_control():
             if paused:
                 # 如果当前是暂停状态，取消暂停
                 success, message = send_mpv_command(["set_property", "pause", "no"])
+                # 发送遮罩提醒
+                send_mask_reminder("MCP播放操作：取消暂停", "mcp_play_resume")
             else:
                 # 检查是否有正在播放的文件
                 filename, _ = get_mpv_property("filename")
                 if not filename:
                     # 如果没有正在播放的文件，尝试播放下一首
+                    # 发送遮罩提醒
+                    send_mask_reminder("MCP播放操作：没有正在播放的文件，尝试播放下一首", "mcp_play_next")
                     next_track_result = next_track()
                     return next_track_result
                 success, message = True, "Already playing"
+                # 发送遮罩提醒
+                send_mask_reminder("MCP播放操作：已经在播放中", "mcp_play_already")
                 
         elif action == "pause":
             success, message = send_mpv_command(["set_property", "pause", "yes"])
+            # 发送遮罩提醒
+            send_mask_reminder("MCP暂停操作：已暂停播放", "mcp_pause")
             
         elif action == "next":
+            # 发送遮罩提醒
+            send_mask_reminder("MCP下一首操作：正在切换到下一首", "mcp_next")
             return next_track()
             
         elif action == "prev":
+            # 发送遮罩提醒
+            send_mask_reminder("MCP上一首操作：正在切换到上一首", "mcp_prev")
             return prev_track()
             
         elif action == "stop":
             success, message = send_mpv_command(["quit"])
+            # 发送遮罩提醒
+            send_mask_reminder("MCP停止操作：已停止播放", "mcp_stop")
             
         elif action == "volume":
             value = params.get("value", 0)
             try:
                 value = int(value)
                 success, message = send_mpv_command(["add", "volume", str(value)])
+                # 发送遮罩提醒
+                send_mask_reminder(f"MCP音量调整：{'增加' if value > 0 else '减少'} {abs(value)}%", "mcp_volume")
             except (ValueError, TypeError):
+                # 发送遮罩提醒
+                send_mask_reminder("MCP音量调整：音量值必须是整数", "mcp_volume_error")
                 return jsonify({
                     "status": "error",
                     "message": "Volume value must be an integer",
@@ -2149,6 +2363,8 @@ def mcp_control():
                 }), 400
                 
         else:
+            # 发送遮罩提醒
+            send_mask_reminder(f"MCP操作：未知的操作类型: {action}", "mcp_unknown_action")
             return jsonify({
                 "status": "error",
                 "message": f"Unknown action: {action}",
@@ -2171,6 +2387,8 @@ def mcp_control():
         current_status["volume"] = float(volume) if volume is not None else 100.0
         
         if success:
+            # 发送遮罩提醒
+            send_mask_reminder(f"MCP操作 '{action}' 执行成功", f"mcp_{action}_success")
             return jsonify({
                 "status": "ok",
                 "message": f"Action '{action}' executed successfully",
@@ -2180,6 +2398,8 @@ def mcp_control():
                 }
             }), 200
         else:
+            # 发送遮罩提醒
+            send_mask_reminder(f"MCP操作 '{action}' 执行失败: {message}", f"mcp_{action}_error")
             return jsonify({
                 "status": "error",
                 "message": f"Failed to execute action: {message}",
@@ -2190,6 +2410,8 @@ def mcp_control():
             }), 500
             
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"MCP控制请求处理出错: {str(e)}", "mcp_control_error")
         return jsonify({
             "status": "error",
             "message": f"Internal server error: {str(e)}",
@@ -2238,7 +2460,12 @@ def cache_info():
 def clear_cache():
     """清理缓存文件"""
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在清理缓存", "clear_cache")
+        
         if not os.path.exists(LOCAL_DIR):
+            # 发送遮罩提醒
+            send_mask_reminder("缓存目录不存在", "clear_cache_info")
             return jsonify({"message": "缓存目录不存在"}), 200
         
         removed_count = 0
@@ -2252,6 +2479,9 @@ def clear_cache():
                 removed_count += 1
                 removed_size += size
         
+        # 发送遮罩提醒
+        send_mask_reminder(f"缓存已清理，删除了 {removed_count} 个文件，释放了 {round(removed_size / (1024 * 1024), 2)} MB 空间", "clear_cache_success")
+        
         return jsonify({
             "status": "ok",
             "message": f"缓存已清理，删除了 {removed_count} 个文件，释放了 {round(removed_size / (1024 * 1024), 2)} MB 空间",
@@ -2259,6 +2489,8 @@ def clear_cache():
             "removed_size_mb": round(removed_size / (1024 * 1024), 2)
         }), 200
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"清理缓存失败: {str(e)}", "clear_cache_error")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/', methods=['GET'])
@@ -2298,27 +2530,132 @@ def stop_playback_monitor():
 def control_playback_monitor():
     """控制播放结束监控服务的启动和停止"""
     try:
+        # 发送遮罩提醒
+        send_mask_reminder("正在处理播放监控控制请求", "control_playback_monitor")
+        
         action = request.args.get('action', '').lower()
         
         if action == 'start':
+            # 发送遮罩提醒
+            send_mask_reminder("正在启动播放结束监控服务", "playback_monitor_start")
+            
             success, message = start_playback_monitor()
+            
+            # 发送遮罩提醒
+            send_mask_reminder("播放结束监控服务已启动", "playback_monitor_start_success")
+            
             return jsonify({"status": "ok", "message": message}), 200
         elif action == 'stop':
+            # 发送遮罩提醒
+            send_mask_reminder("正在停止播放结束监控服务", "playback_monitor_stop")
+            
             success, message = stop_playback_monitor()
+            
+            # 发送遮罩提醒
+            send_mask_reminder("播放结束监控服务已停止", "playback_monitor_stop_success")
+            
             return jsonify({"status": "ok", "message": message}), 200
         elif action == 'status':
+            # 获取状态信息
+            status_msg = "播放结束监控服务正在运行" if playback_monitor_running else "播放结束监控服务未运行"
+            
+            # 发送遮罩提醒
+            send_mask_reminder(status_msg, "playback_monitor_status")
+            
             return jsonify({
                 "status": "ok",
                 "running": playback_monitor_running,
                 "thread_alive": playback_monitor_thread.is_alive() if playback_monitor_thread else False
             }), 200
         else:
+            # 发送遮罩提醒
+            send_mask_reminder("无效的操作，支持的操作: start, stop, status", "playback_monitor_error")
+            
             return jsonify({"status": "error", "message": "无效的操作，支持的操作: start, stop, status"}), 400
             
     except Exception as e:
+        # 发送遮罩提醒
+        send_mask_reminder(f"控制播放监控服务时出错: {str(e)}", "playback_monitor_error")
+        
         app.logger.error(f"[PLAYBACK_MONITOR] 控制播放监控服务时出错: {str(e)}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
+
+# 遮罩提醒处理机制
+mask_reminder_queue = []
+mask_reminder_last_sent = 0
+mask_reminder_cooldown = 0.5  # 遮罩提醒冷却时间（秒）
+mask_reminder_lock = threading.Lock()
+
+def send_mask_reminder(message, action_type="general"):
+    """发送遮罩提醒
+    
+    Args:
+        message: 提醒消息内容
+        action_type: 动作类型，用于分类和过滤
+    
+    处理逻辑：
+    1. 为了避免多个遮罩同时出现或紧跟出现，添加冷却机制
+    2. 短时间内的多个提醒会被合并处理
+    3. 冷却时间内的提醒会被记录但不会立即发送
+    """
+    global mask_reminder_queue, mask_reminder_last_sent, mask_reminder_cooldown, mask_reminder_lock
+    
+    try:
+        with mask_reminder_lock:
+            current_time = time.time()
+            time_since_last_sent = current_time - mask_reminder_last_sent
+            
+            # 如果距离上次发送提醒的时间小于冷却时间，将提醒加入队列
+            if time_since_last_sent < mask_reminder_cooldown:
+                # 检查队列中是否已有相同类型的提醒，如果有则更新，否则添加
+                existing_index = next((i for i, item in enumerate(mask_reminder_queue) if item['type'] == action_type), -1)
+                if existing_index >= 0:
+                    # 更新现有提醒
+                    mask_reminder_queue[existing_index] = {
+                        'message': message,
+                        'type': action_type,
+                        'timestamp': current_time
+                    }
+                else:
+                    # 添加新提醒到队列
+                    mask_reminder_queue.append({
+                        'message': message,
+                        'type': action_type,
+                        'timestamp': current_time
+                    })
+                
+                app.logger.info(f"[MASK_REMINDER_QUEUED] [{action_type}] {message} (冷却中，已加入队列)")
+                return True, "提醒已加入队列，将在冷却后发送"
+            
+            # 如果队列中有等待的提醒，先处理队列中的提醒
+            if mask_reminder_queue:
+                # 优先处理最新的提醒
+                latest_reminder = mask_reminder_queue.pop()
+                # 记录并发送最新的提醒
+                app.logger.info(f"[MASK_REMINDER] [{latest_reminder['type']}] {latest_reminder['message']} (来自队列)")
+                mask_reminder_last_sent = current_time
+                
+                # 然后处理当前的提醒
+                app.logger.info(f"[MASK_REMINDER] [{action_type}] {message} (当前提醒)")
+                mask_reminder_last_sent = current_time
+            else:
+                # 直接发送当前提醒
+                app.logger.info(f"[MASK_REMINDER] [{action_type}] {message} (直接发送)")
+                mask_reminder_last_sent = current_time
+        
+        # 这里可以添加实际的遮罩提醒逻辑
+        # 例如：发送API请求、触发通知、更新UI等
+        # 目前仅记录日志，可根据需要扩展
+        
+        # 示例：发送HTTP请求到前端
+        # import requests
+        # requests.post('http://localhost:3000/api/reminder', json={'message': message, 'type': action_type})
+        
+        return True, "提醒发送成功"
+    except Exception as e:
+        app.logger.error(f"[MASK_REMINDER] 发送提醒失败: {str(e)}", exc_info=True)
+        return False, f"提醒发送失败: {str(e)}"
 
 def auto_play():
     """自动播放函数，在应用启动后延迟执行"""
@@ -2326,6 +2663,8 @@ def auto_play():
     # 延迟1秒执行，确保应用程序完全初始化
     time.sleep(1)
     app.logger.info("[AUTO_PLAY] 开始自动播放")
+    # 发送遮罩提醒
+    send_mask_reminder("应用启动，开始自动播放", "auto_play")
     try:
         # 调用next_track函数开始播放
         response = next_track()

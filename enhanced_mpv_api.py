@@ -880,7 +880,7 @@ def auto_cache_worker():
 
 def playback_monitor_worker():
     """播放结束监控工作线程 - 检测播放结束并自动播放下一首"""
-    global playback_monitor_running, current_playing_file
+    global playback_monitor_running, current_playing_file, self_recorded_state
     app.logger.info("[PLAYBACK_MONITOR] 播放结束监控线程已启动")
     
     # 检查间隔时间（秒）
@@ -1719,9 +1719,22 @@ def get_status():
         position, position_msg = get_mpv_property("time-pos")
         app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
         
-        app.logger.debug("[状态获取] 尝试获取duration属性")
-        duration, duration_msg = get_mpv_property("duration")
-        app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
+        # 尝试获取duration属性，增加重试机制
+        max_retries = 5
+        retry_count = 0
+        duration = None
+        duration_msg = ""
+        
+        while retry_count < max_retries and (duration is None or duration == 0):
+            app.logger.debug(f"[状态获取] 尝试获取duration属性 (重试 {retry_count+1}/{max_retries})")
+            duration, duration_msg = get_mpv_property("duration")
+            app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
+            
+            if duration is not None and duration > 0:
+                break
+            
+            retry_count += 1
+            time.sleep(0.1)  # 短暂等待后重试
         
         # 添加进度相关信息到返回状态
         current_position = position if position is not None else 0
@@ -1734,6 +1747,7 @@ def get_status():
             app.logger.debug(f"[状态获取] 计算播放进度: {current_progress}%")
         else:
             current_progress = 0
+            app.logger.debug(f"[状态获取] 无法计算进度，duration为0或无效: {current_duration}")
         
         # 更新自己记录的进度状态
         self_recorded_state["position"] = current_position
@@ -2109,7 +2123,7 @@ def clear_cache():
 @log_operation("访问网页控制面板")
 def web_control_panel():
     """网页控制面板"""
-    return render_template('index.html')
+    return jsonify({"status": "ok", "message": "Termux Audio Server is running"}), 200
 
 def start_playback_monitor():
     """启动播放结束监控线程"""

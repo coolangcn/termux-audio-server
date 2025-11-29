@@ -2220,6 +2220,97 @@ def get_status():
         # 添加MPV获取的时长信息
         status["mpv_duration"] = duration
         
+        # 确保duration_info字段存在并包含所有方式的时长信息
+        if "duration_info" not in status:
+            status["duration_info"] = {
+                "ffprobe": 0,
+                "ffmpeg": 0,
+                "mutagen": 0,
+                "file_path": None
+            }
+        
+        # 尝试获取当前播放文件的本地路径，用于获取多种方式的时长信息
+        try:
+            # 获取path属性
+            path, path_msg = get_mpv_property("path")
+            file_path = None
+            
+            if path and isinstance(path, str) and path.strip():
+                file_path = path
+            else:
+                # 如果path属性获取失败，尝试从filename构建本地路径
+                filename = status.get("current_file", "")
+                if filename:
+                    # 构建本地缓存路径
+                    local_path = os.path.join(LOCAL_DIR, filename)
+                    file_path = local_path
+            
+            # 获取多种方式的时长信息
+            if file_path and os.path.exists(file_path):
+                # 使用ffprobe获取时长
+                ffprobe_duration = 0
+                try:
+                    import subprocess
+                    cmd = [
+                        'ffprobe',
+                        '-v', 'error',
+                        '-show_entries', 'format=duration',
+                        '-of', 'default=noprint_wrappers=1:nokey=1',
+                        file_path
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    if result.returncode == 0 and result.stdout.strip():
+                        ffprobe_duration = float(result.stdout.strip())
+                        app.logger.debug(f"[状态获取] 使用ffprobe获取到时长: {ffprobe_duration}秒")
+                except Exception as e:
+                    app.logger.debug(f"[状态获取] 使用ffprobe获取时长失败: {e}")
+                
+                # 使用ffmpeg获取时长
+                ffmpeg_duration = 0
+                try:
+                    cmd = [
+                        'ffmpeg',
+                        '-i', file_path,
+                        '-v', 'error',
+                        '-f', 'null',
+                        '-'
+                    ]
+                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+                    if result.stderr.strip():
+                        # 从ffmpeg的错误输出中提取时长
+                        import re
+                        duration_match = re.search(r"Duration: (\d+):(\d+):(\d+)\.(\d+)", result.stderr)
+                        if duration_match:
+                            hours = int(duration_match.group(1))
+                            minutes = int(duration_match.group(2))
+                            seconds = int(duration_match.group(3))
+                            milliseconds = int(duration_match.group(4)) / 100
+                            ffmpeg_duration = hours * 3600 + minutes * 60 + seconds + milliseconds
+                            app.logger.debug(f"[状态获取] 使用ffmpeg获取到时长: {ffmpeg_duration}秒")
+                except Exception as e:
+                    app.logger.debug(f"[状态获取] 使用ffmpeg获取时长失败: {e}")
+                
+                # 使用mutagen获取时长
+                mutagen_duration = 0
+                try:
+                    import mutagen
+                    audio = mutagen.File(file_path)
+                    if audio and hasattr(audio.info, 'length'):
+                        mutagen_duration = audio.info.length
+                        app.logger.debug(f"[状态获取] 使用mutagen获取到时长: {mutagen_duration}秒")
+                except Exception as e:
+                    app.logger.debug(f"[状态获取] 使用mutagen获取时长失败: {e}")
+                
+                # 更新duration_info字段
+                status["duration_info"] = {
+                    "ffprobe": ffprobe_duration,
+                    "ffmpeg": ffmpeg_duration,
+                    "mutagen": mutagen_duration,
+                    "file_path": file_path
+                }
+        except Exception as e:
+            app.logger.debug(f"[状态获取] 获取多种方式的时长信息失败: {e}")
+        
         # 添加进度相关信息到返回状态
         status["position"] = current_position
         status["duration"] = current_duration
@@ -2229,15 +2320,6 @@ def get_status():
         status["self_recorded_position"] = self_recorded_state["position"]
         status["self_recorded_duration"] = self_recorded_state["duration"]
         status["self_recorded_progress"] = self_recorded_state["progress"]
-        
-        # 确保duration_info字段存在
-        if "duration_info" not in status:
-            status["duration_info"] = {
-                "ffprobe": 0,
-                "ffmpeg": 0,
-                "mutagen": 0,
-                "file_path": None
-            }
         
         # 添加遮罩提醒信息
         global current_mask_reminder

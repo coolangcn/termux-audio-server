@@ -3005,4 +3005,4 @@ if __name__ == '__main__':
     API_PORT = int(os.environ.get('API_PORT', 5000))
     print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")
     print("✅ WebSocket support enabled")
-    socketio.run(app, host='0.0.0.0', port=API_PORT, debug=False, threaded=True)
+    socketio.run(app, host='0.0.0.0', port=API_PORT, debug=False)

@@ -918,12 +918,40 @@ def playback_monitor_worker():
                 # 重置进度状态，新文件开始播放
                 last_status['progress'] = 0
             
+            # 定期获取并更新状态，确保自己记录的状态是最新的
+            # 调用get_status函数会自动更新self_recorded_state
+            try:
+                # 模拟调用get_status来更新状态，或者直接获取MPV属性
+                position, _ = get_mpv_property("time-pos")
+                duration, _ = get_mpv_property("duration")
+                pause_state, _ = get_mpv_property("pause")
+                
+                # 更新自己记录的状态
+                current_position = position if position is not None else 0
+                current_duration = duration if duration is not None else 0
+                
+                if current_duration and current_duration > 0:
+                    current_progress = (current_position / current_duration) * 100 if current_position else 0
+                    current_progress = round(current_progress, 2)
+                else:
+                    current_progress = 0
+                
+                # 更新自己记录的状态
+                self_recorded_state["position"] = current_position
+                self_recorded_state["duration"] = current_duration
+                self_recorded_state["progress"] = current_progress
+                if pause_state is not None:
+                    self_recorded_state["paused"] = pause_state
+                    self_recorded_state["playing"] = not pause_state
+            except Exception as e:
+                app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
+            
             # 获取自己记录的状态
             current_progress = self_recorded_state["progress"]
             is_paused = self_recorded_state["paused"]
             is_playing = self_recorded_state["playing"]
             
-            app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}")
+            app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}, 时长: {self_recorded_state['duration']}秒")
             
             # 检测播放结束条件：
             # 1. 进度接近100%（考虑到可能不会精确到100%）

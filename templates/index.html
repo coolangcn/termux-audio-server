@@ -211,10 +211,10 @@
                         maskReminderType.textContent = data.mask_reminder.type;
                         maskReminder.style.display = 'block';
                         
-                        // 2秒后自动隐藏遮罩提醒
+                        // 3秒后自动隐藏遮罩提醒
                         setTimeout(function() {
                             maskReminder.style.display = 'none';
-                        }, 2000);
+                        }, 3000);
                     } else {
                         // 隐藏遮罩提醒
                         document.getElementById('mask-reminder').style.display = 'none';
@@ -981,7 +981,7 @@
             function scheduleStatusUpdate() {
                 setTimeout(() => {
                     updateStatus().finally(scheduleStatusUpdate);
-                }, 1000);
+                }, 500);
             }
             scheduleStatusUpdate();
 

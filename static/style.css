@@ -611,26 +611,46 @@ h1 {
 /* 遮罩提醒样式 */
 .mask-reminder {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    background-color: rgba(0, 0, 0, 0.8);
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background-color: rgba(0, 0, 0, 0.95);
     color: white;
-    padding: 15px;
-    border-radius: 8px;
-    z-index: 999;
-    font-size: 1em;
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-    animation: fadeIn 0.3s ease-in-out;
+    padding: 25px 30px;
+    border-radius: 12px;
+    z-index: 9999;
+    font-size: 1.2em;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    animation: fadeIn 0.5s ease-in-out, pulse 2s ease-in-out infinite;
+    border: 2px solid #00E054;
+    min-width: 300px;
+    text-align: center;
 }
 
 .mask-reminder-message {
     font-weight: bold;
-    margin-bottom: 5px;
+    margin-bottom: 8px;
+    font-size: 1.3em;
+    color: #00E054;
 }
 
 .mask-reminder-type {
-    font-size: 0.8em;
-    opacity: 0.8;
+    font-size: 0.9em;
+    opacity: 0.9;
+    color: #fff;
+}
+
+/* 脉冲动画 */
+@keyframes pulse {
+    0% {
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+    50% {
+        box-shadow: 0 8px 40px rgba(0, 224, 84, 0.8);
+    }
+    100% {
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
 }
 
 /* 时长信息样式 */

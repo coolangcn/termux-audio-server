@@ -992,7 +992,7 @@ def playback_monitor_worker():
             # 定期获取并更新状态，确保自己记录的状态是最新的
             try:
                 # 获取MPV属性，增强可靠性
-                max_retries = 3
+                max_retries = 5
                 retry_count = 0
                 position = None
                 duration = None
@@ -1000,33 +1000,50 @@ def playback_monitor_worker():
                 eof_reached = None
                 idle_active = None
                 
-                # 重试获取MPV属性
+                # 重试获取MPV属性，重点获取time-pos
                 while retry_count < max_retries:
-                    position, _ = get_mpv_property("time-pos")
+                    # 单独获取time-pos，增加重试次数
+                    time_pos_result = get_mpv_property("time-pos")
+                    position = time_pos_result[0]
+                    
+                    # 获取其他属性
                     duration, _ = get_mpv_property("duration")
                     pause_state, _ = get_mpv_property("pause")
                     eof_reached, _ = get_mpv_property("eof-reached")
                     idle_active, _ = get_mpv_property("idle-active")
                     
-                    # 如果获取到了有效位置或时长，就退出重试
-                    if (position is not None and position > 0) or (duration is not None and duration > 0):
+                    # 如果获取到了有效位置，就退出重试
+                    if position is not None and position > 0:
                         break
                     
                     retry_count += 1
-                    time.sleep(0.1)  # 短暂等待后重试
+                    time.sleep(0.05)  # 短暂等待后重试，缩短重试间隔
+                
+                # 获取当前时间，用于更精确的位置计算
+                current_time = time.time()
                 
                 # 更新自己记录的状态
                 current_duration = duration if duration is not None else self_recorded_state["duration"]
                 
-                # 计算当前位置：优先使用MPV返回的position，如果无效则使用自己记录的position加上时间差
+                # 计算当前位置：优先使用MPV返回的position，如果无效则使用自己记录的位置加上精确的时间差
                 if position is not None and position > 0:
                     # MPV返回了有效位置，直接使用
                     current_position = position
                 else:
-                    # MPV未返回有效位置，使用自己记录的位置加上时间差
+                    # MPV未返回有效位置，使用自己记录的位置加上精确的时间差
                     if not self_recorded_state["paused"] and self_recorded_state["playing"]:
-                        # 正在播放，计算位置增量
-                        position_increment = check_interval
+                        # 正在播放，计算精确的位置增量
+                        # 记录上一次更新的时间
+                        if "last_update_time" not in self_recorded_state:
+                            self_recorded_state["last_update_time"] = current_time
+                        
+                        # 计算时间差
+                        time_diff = current_time - self_recorded_state["last_update_time"]
+                        # 更新上一次更新的时间
+                        self_recorded_state["last_update_time"] = current_time
+                        
+                        # 计算位置增量
+                        position_increment = time_diff
                         current_position = self_recorded_state["position"] + position_increment
                     else:
                         # 暂停或未播放，保持当前位置
@@ -1036,7 +1053,7 @@ def playback_monitor_worker():
                 if current_duration > 0:
                     current_position = min(current_position, current_duration)
                     current_progress = (current_position / current_duration) * 100 if current_position else 0
-                    current_progress = round(current_progress, 2)
+                    current_progress = round(current_progress, 3)  # 增加精度
                 else:
                     current_progress = 0
                 
@@ -1044,17 +1061,20 @@ def playback_monitor_worker():
                 self_recorded_state["position"] = current_position
                 self_recorded_state["duration"] = current_duration
                 self_recorded_state["progress"] = current_progress
+                self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
+                
                 if pause_state is not None:
                     self_recorded_state["paused"] = pause_state
                     self_recorded_state["playing"] = not pause_state
                 
-                # 额外的进度保护：如果MPV返回的位置与自己记录的位置差异过大，使用自己记录的位置
+                # 额外的进度保护：如果MPV返回的位置与自己记录的位置差异过大，使用MPV返回的位置
                 if position is not None and position > 0:
                     position_diff = abs(position - self_recorded_state["position"])
-                    if position_diff > 1.0:  # 差异超过1秒，可能是MPV状态异常
-                        app.logger.warning(f"[PLAYBACK_MONITOR] MPV位置与自己记录的位置差异过大: {position_diff}秒，使用自己记录的位置")
-                        self_recorded_state["position"] = current_position
-                        current_position = self_recorded_state["position"]
+                    if position_diff > 0.5:  # 差异超过0.5秒，可能是MPV状态异常
+                        app.logger.warning(f"[PLAYBACK_MONITOR] MPV位置与自己记录的位置差异过大: {position_diff}秒，使用MPV返回的位置")
+                        self_recorded_state["position"] = position
+                        current_position = position
+                        self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
                 # 继续执行，使用默认值

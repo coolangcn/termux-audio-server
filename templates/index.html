@@ -20,6 +20,12 @@
         <div id="loading-filename" class="loading-filename"></div>
     </div>
 
+    <!-- 遮罩提醒 -->
+    <div id="mask-reminder" class="mask-reminder" style="display: none;">
+        <div id="mask-reminder-message" class="mask-reminder-message"></div>
+        <div id="mask-reminder-type" class="mask-reminder-type"></div>
+    </div>
+
     <div class="container">
         <h1>🎵 音频控制面板</h1>
 
@@ -30,6 +36,15 @@
                 <div>🎵 当前播放</div>
                 <div id="current-file">无</div>
                 <div>播放状态: <span id="play-status">未播放</span></div>
+
+                <!-- 时长信息 -->
+                <div class="duration-info">
+                    <div>最终时长: <span id="final-duration">00:00</span></div>
+                    <div>MPV时长: <span id="mpv-duration">00:00</span></div>
+                    <div>FFprobe时长: <span id="ffprobe-duration">00:00</span></div>
+                    <div>FFmpeg时长: <span id="ffmpeg-duration">00:00</span></div>
+                    <div>Mutagen时长: <span id="mutagen-duration">00:00</span></div>
+                </div>
 
                 <!-- 播放进度条 -->
                 <div class="progress-control">
@@ -935,7 +950,7 @@
             function scheduleStatusUpdate() {
                 setTimeout(() => {
                     updateStatus().finally(scheduleStatusUpdate);
-                }, 5000);
+                }, 1000);
             }
             scheduleStatusUpdate();
 

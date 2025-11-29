@@ -2123,7 +2123,7 @@ def clear_cache():
 @log_operation("访问网页控制面板")
 def web_control_panel():
     """网页控制面板"""
-    return jsonify({"status": "ok", "message": "Termux Audio Server is running"}), 200
+    return render_template('index.html')
 
 def start_playback_monitor():
     """启动播放结束监控线程"""

@@ -308,6 +308,46 @@ def get_status_with_timeline():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def get_file_duration(file_path):
+    """使用ffprobe获取文件时长，作为MPV无法返回时长时的备用方法"""
+    try:
+        # 检查文件是否存在
+        if not os.path.exists(file_path):
+            operation_logger.debug(f"[文件时长] 文件不存在: {file_path}")
+            return 0
+        
+        # 尝试使用ffprobe获取时长
+        import subprocess
+        cmd = [
+            'ffprobe',
+            '-v', 'error',
+            '-show_entries', 'format=duration',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+            file_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            duration = float(result.stdout.strip())
+            operation_logger.debug(f"[文件时长] 使用ffprobe获取到时长: {duration}秒")
+            return duration
+        
+        # 尝试使用mutagen库获取时长
+        try:
+            import mutagen
+            audio = mutagen.File(file_path)
+            if audio and hasattr(audio.info, 'length'):
+                duration = audio.info.length
+                operation_logger.debug(f"[文件时长] 使用mutagen获取到时长: {duration}秒")
+                return duration
+        except Exception as e:
+            operation_logger.debug(f"[文件时长] 使用mutagen获取时长失败: {e}")
+            
+        operation_logger.debug(f"[文件时长] 无法获取文件时长: {file_path}")
+        return 0
+    except Exception as e:
+        operation_logger.debug(f"[文件时长] 获取文件时长异常: {e}")
+        return 0
+
 def get_mpv_property(property_name):
     """获取MPV属性值"""
     operation_logger.debug(f"[MPV属性] 尝试获取属性: {property_name}")
@@ -890,7 +930,10 @@ def playback_monitor_worker():
     last_status = {
         'progress': 0,
         'paused': self_recorded_state["paused"],
-        'playing_file': current_playing_file
+        'playing_file': current_playing_file,
+        'time_pos': 0,
+        'time_pos_stable_count': 0,
+        'stable_threshold': 10
     }
     
     while playback_monitor_running:
@@ -915,8 +958,10 @@ def playback_monitor_worker():
                 app.logger.info(f"[PLAYBACK_MONITOR] 播放文件变更: {last_status['playing_file']} -> {filename}")
                 current_playing_file = filename
                 last_status['playing_file'] = filename
-                # 重置进度状态，新文件开始播放
+                # 重置状态，新文件开始播放
                 last_status['progress'] = 0
+                last_status['time_pos'] = 0
+                last_status['time_pos_stable_count'] = 0
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
             # 调用get_status函数会自动更新self_recorded_state
@@ -925,6 +970,8 @@ def playback_monitor_worker():
                 position, _ = get_mpv_property("time-pos")
                 duration, _ = get_mpv_property("duration")
                 pause_state, _ = get_mpv_property("pause")
+                eof_reached, _ = get_mpv_property("eof-reached")
+                idle_active, _ = get_mpv_property("idle-active")
                 
                 # 更新自己记录的状态
                 current_position = position if position is not None else 0
@@ -945,27 +992,61 @@ def playback_monitor_worker():
                     self_recorded_state["playing"] = not pause_state
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
+                # 继续执行，使用默认值
+                eof_reached = False
+                idle_active = False
             
             # 获取自己记录的状态
             current_progress = self_recorded_state["progress"]
             is_paused = self_recorded_state["paused"]
             is_playing = self_recorded_state["playing"]
+            current_position = self_recorded_state["position"]
+            current_duration = self_recorded_state["duration"]
             
-            app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}, 时长: {self_recorded_state['duration']}秒")
+            app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}, 时长: {current_duration}秒")
             
-            # 检测播放结束条件：
-            # 1. 进度接近100%（考虑到可能不会精确到100%）
-            # 2. 正在播放（不是暂停状态）
-            # 3. 当前有播放文件
-            # 4. 进度有变化或已接近完成
-            if (current_progress >= 99.9 or (current_progress > 0 and current_progress == last_status['progress'] and current_progress > 95)) and not is_paused and filename:
+            # 检测time-pos是否稳定（不再变化）
+            time_pos_changed = abs(current_position - last_status['time_pos']) > 0.1  # 允许0.1秒的误差
+            if time_pos_changed:
+                last_status['time_pos_stable_count'] = 0
+                last_status['time_pos'] = current_position
+            else:
+                last_status['time_pos_stable_count'] += 1
+            
+            # 检测播放结束条件，支持多种检测方法：
+            # 1. 使用eof-reached属性（MPV直接报告播放结束）
+            # 2. 使用idle-active属性（MPV进入空闲状态）
+            # 3. 进度接近100%（考虑到可能不会精确到100%）
+            # 4. time-pos长时间稳定不变（适用于无法获取duration的情况）
+            # 5. 进度有变化或已接近完成
+            playback_ended = False
+            end_reason = ""
+            
+            if eof_reached:
+                playback_ended = True
+                end_reason = "eof-reached属性检测到播放结束"
+            elif idle_active and is_playing and not is_paused:
+                playback_ended = True
+                end_reason = "idle-active属性检测到播放结束"
+            elif current_duration > 0 and (current_progress >= 99.9 or (current_progress > 0 and current_progress == last_status['progress'] and current_progress > 95)):
+                playback_ended = True
+                end_reason = f"进度检测到播放结束（进度: {current_progress}%）"
+            elif not is_paused and is_playing and filename and last_status['time_pos_stable_count'] >= last_status['stable_threshold']:
+                # 适用于无法获取duration的情况
+                playback_ended = True
+                end_reason = f"time-pos稳定检测到播放结束（稳定次数: {last_status['time_pos_stable_count']}）"
+            
+            # 如果检测到播放结束
+            if playback_ended and not is_paused and filename:
                 # 只有状态发生变化时才触发
                 if last_status['progress'] < 99.9:
-                    app.logger.info(f"[PLAYBACK_MONITOR] 检测到播放结束（进度: {current_progress}%），自动播放下一首")
+                    app.logger.info(f"[PLAYBACK_MONITOR] {end_reason}，自动播放下一首")
                     # 调用下一首函数
                     next_track()
-                    # 重置进度状态
+                    # 重置状态
                     last_status['progress'] = 0
+                    last_status['time_pos'] = 0
+                    last_status['time_pos_stable_count'] = 0
             
             # 更新状态跟踪
             last_status['progress'] = current_progress
@@ -1735,6 +1816,35 @@ def get_status():
             
             retry_count += 1
             time.sleep(0.1)  # 短暂等待后重试
+        
+        # 如果MPV无法返回有效时长，尝试使用文件路径获取时长
+        if duration is None or duration <= 0:
+            app.logger.debug("[状态获取] MPV无法返回有效时长，尝试使用文件路径获取")
+            
+            # 尝试获取当前播放文件的本地路径
+            try:
+                # 获取path属性
+                path, path_msg = get_mpv_property("path")
+                if path and isinstance(path, str) and path.strip():
+                    app.logger.debug(f"[状态获取] 获取到path属性: {path}")
+                    # 使用文件路径获取时长
+                    file_duration = get_file_duration(path)
+                    if file_duration > 0:
+                        duration = file_duration
+                        app.logger.debug(f"[状态获取] 使用文件路径获取到时长: {duration}秒")
+                else:
+                    # 如果path属性获取失败，尝试从filename构建本地路径
+                    filename = status.get("current_file", "")
+                    if filename:
+                        # 构建本地缓存路径
+                        local_path = os.path.join(LOCAL_DIR, filename)
+                        app.logger.debug(f"[状态获取] 尝试使用本地缓存路径: {local_path}")
+                        file_duration = get_file_duration(local_path)
+                        if file_duration > 0:
+                            duration = file_duration
+                            app.logger.debug(f"[状态获取] 使用本地缓存路径获取到时长: {duration}秒")
+            except Exception as e:
+                app.logger.debug(f"[状态获取] 使用文件路径获取时长失败: {e}")
         
         # 添加进度相关信息到返回状态
         current_position = position if position is not None else 0

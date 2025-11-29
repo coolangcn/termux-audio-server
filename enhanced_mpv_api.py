@@ -1814,17 +1814,40 @@ def seek():
         position = request.args.get('position')
         if not position:
             return jsonify({"status": "error", "message": "Missing position parameter"}), 400
-            
+        
+        # 转换position为浮点数
+        position_float = float(position)
+        
         # 发送遮罩提醒
         send_mask_reminder(f"正在调整播放进度到 {position} 秒", "seek")
             
         # 发送seek命令
         success, message = send_mpv_command(["seek", position, "absolute"])
-        
+    
         if success:
             # 发送遮罩提醒
             send_mask_reminder(f"播放进度调整成功，当前位置: {position} 秒", "seek_success")
-            return jsonify({"status": "ok", "action": "seek", "position": position}), 200
+            
+            # 更新自己记录的状态，确保进度条停留在拖动到的位置
+            global self_recorded_state
+            
+            # 获取当前时长，用于计算进度
+            duration, _ = get_mpv_property("duration")
+            current_duration = duration if duration is not None else self_recorded_state["duration"]
+            
+            # 计算进度
+            if current_duration > 0:
+                current_progress = (position_float / current_duration) * 100 if position_float else 0
+                current_progress = round(current_progress, 3)
+            else:
+                current_progress = 0
+            
+            # 更新自己记录的状态
+            self_recorded_state["position"] = position_float
+            self_recorded_state["progress"] = current_progress
+            self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
+            
+            return jsonify({"status": "ok", "action": "seek", "position": position, "progress": current_progress}), 200
         else:
             # 发送遮罩提醒
             send_mask_reminder(f"播放进度调整失败: {message}", "seek_error")

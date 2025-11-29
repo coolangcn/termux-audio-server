@@ -888,9 +888,8 @@ def playback_monitor_worker():
     
     # 用于跟踪状态变化
     last_status = {
-        'eof_reached': False,
-        'idle_active': False,
-        'paused': False,
+        'progress': 0,
+        'paused': self_recorded_state["paused"],
         'playing_file': current_playing_file
     }
     
@@ -908,59 +907,41 @@ def playback_monitor_worker():
                 time.sleep(check_interval)
                 continue
             
-            # 获取MPV状态 - 增加重试机制
-            max_retries = 3
-            retry_count = 0
-            eof_reached = None
-            idle_active = None
-            paused = None
-            filename = None
-            
-            while retry_count < max_retries:
-                try:
-                    eof_reached, _ = get_mpv_property("eof-reached")
-                    idle_active, _ = get_mpv_property("idle-active")
-                    paused, _ = get_mpv_property("pause")
-                    filename, _ = get_mpv_property("filename")
-                    break
-                except Exception as retry_e:
-                    retry_count += 1
-                    app.logger.debug(f"[PLAYBACK_MONITOR] 获取MPV状态重试 {retry_count}/{max_retries}: {str(retry_e)}")
-                    time.sleep(0.1)  # 短暂等待后重试
-            
-            # 确保值为布尔类型
-            eof_reached = bool(eof_reached)
-            idle_active = bool(idle_active)
-            paused = bool(paused) if paused is not None else False
-            filename = filename or ""
+            # 获取当前播放文件信息
+            filename = self_recorded_state["current_file"]
             
             # 更新当前播放文件
             if filename and filename != last_status['playing_file']:
                 app.logger.info(f"[PLAYBACK_MONITOR] 播放文件变更: {last_status['playing_file']} -> {filename}")
                 current_playing_file = filename
                 last_status['playing_file'] = filename
-                # 重置EOF状态，新文件开始播放
-                last_status['eof_reached'] = False
+                # 重置进度状态，新文件开始播放
+                last_status['progress'] = 0
+            
+            # 获取自己记录的状态
+            current_progress = self_recorded_state["progress"]
+            is_paused = self_recorded_state["paused"]
+            is_playing = self_recorded_state["playing"]
+            
+            app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}")
             
             # 检测播放结束条件：
-            # 1. 达到文件末尾 (eof-reached = true)
-            # 2. 处于空闲状态 (idle-active = true) 且不是暂停状态
-            # 3. 当前有播放文件（避免MPV刚启动时触发）
-            if (eof_reached or idle_active) and not paused and last_status['playing_file']:
+            # 1. 进度接近100%（考虑到可能不会精确到100%）
+            # 2. 正在播放（不是暂停状态）
+            # 3. 当前有播放文件
+            # 4. 进度有变化或已接近完成
+            if (current_progress >= 99.9 or (current_progress > 0 and current_progress == last_status['progress'] and current_progress > 95)) and not is_paused and filename:
                 # 只有状态发生变化时才触发
-                if not last_status['eof_reached']:
-                    app.logger.info("[PLAYBACK_MONITOR] 检测到播放结束，自动播放下一首")
+                if last_status['progress'] < 99.9:
+                    app.logger.info(f"[PLAYBACK_MONITOR] 检测到播放结束（进度: {current_progress}%），自动播放下一首")
                     # 调用下一首函数
                     next_track()
-                    # 更新状态
-                    last_status['eof_reached'] = True
-            elif not eof_reached and not idle_active:
-                # 重置EOF状态，准备下一次检测
-                last_status['eof_reached'] = False
+                    # 重置进度状态
+                    last_status['progress'] = 0
             
             # 更新状态跟踪
-            last_status['idle_active'] = idle_active
-            last_status['paused'] = paused
+            last_status['progress'] = current_progress
+            last_status['paused'] = is_paused
             
             time.sleep(check_interval)
         except Exception as e:

@@ -1148,6 +1148,7 @@ def playback_monitor_worker():
                 current_position = current_duration
                 self_recorded_state["progress"] = current_progress
                 self_recorded_state["position"] = current_position
+                self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
                 
                 playback_ended = True
                 if eof_reached:
@@ -1162,6 +1163,7 @@ def playback_monitor_worker():
                     current_position = current_duration
                     self_recorded_state["progress"] = current_progress
                     self_recorded_state["position"] = current_position
+                    self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
                     
                     playback_ended = True
                     end_reason = f"进度检测到播放结束（进度: {current_progress}%）"
@@ -1171,6 +1173,7 @@ def playback_monitor_worker():
                     current_position = current_duration
                     self_recorded_state["progress"] = current_progress
                     self_recorded_state["position"] = current_position
+                    self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
                     
                     playback_ended = True
                     end_reason = f"进度稳定检测到播放结束（进度: {current_progress}%）"
@@ -1190,6 +1193,11 @@ def playback_monitor_worker():
                     last_status['progress'] = 0
                     last_status['time_pos'] = 0
                     last_status['time_pos_stable_count'] = 0
+                    # 重置自己记录的状态，确保下一首从0开始
+                    self_recorded_state["position"] = 0
+                    self_recorded_state["duration"] = 0
+                    self_recorded_state["progress"] = 0
+                    self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
             
             # 更新状态跟踪
             last_status['progress'] = current_progress

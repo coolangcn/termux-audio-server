@@ -73,7 +73,10 @@ self_recorded_state = {
     "playing": False,  # 是否正在播放
     "paused": True,    # 是否暂停
     "current_file": "", # 当前播放的文件名
-    "volume": 100      # 当前音量
+    "volume": 100,     # 当前音量
+    "position": 0,     # 当前播放位置（秒）
+    "duration": 0,     # 总时长（秒）
+    "progress": 0      # 播放进度百分比
 }
 timeline_lock = threading.RLock()  # 用于线程安全
 
@@ -1124,7 +1127,8 @@ def pause_toggle():
             # 更新自己记录的状态
             global self_recorded_state
             self_recorded_state["paused"] = not pause_state
-            self_recorded_state["playing"] = not not pause_state
+            self_recorded_state["playing"] = not pause_state
+            app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
             return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
         else:
             # 如果发送命令失败，返回错误信息
@@ -1711,20 +1715,31 @@ def get_status():
         app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
         
         # 添加进度相关信息到返回状态
-        status["position"] = position if position is not None else 0
-        status["duration"] = duration if duration is not None else 0
+        current_position = position if position is not None else 0
+        current_duration = duration if duration is not None else 0
         
         # 计算播放进度百分比
-        if duration and duration > 0:
-            progress = (position / duration) * 100 if position else 0
-            status["progress"] = round(progress, 2)
-            app.logger.debug(f"[状态获取] 计算播放进度: {status['progress']}%")
+        if current_duration and current_duration > 0:
+            current_progress = (current_position / current_duration) * 100 if current_position else 0
+            current_progress = round(current_progress, 2)
+            app.logger.debug(f"[状态获取] 计算播放进度: {current_progress}%")
         else:
-            status["progress"] = 0
+            current_progress = 0
+        
+        # 更新自己记录的进度状态
+        self_recorded_state["position"] = current_position
+        self_recorded_state["duration"] = current_duration
+        self_recorded_state["progress"] = current_progress
+        
+        # 添加进度相关信息到返回状态
+        status["position"] = current_position
+        status["duration"] = current_duration
+        status["progress"] = current_progress
         
         status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
         status["mpv_error"] = MPV_RUNTIME_ERROR or ""
         app.logger.debug(f"[状态获取] 完整状态数据: {json.dumps(status, ensure_ascii=False)}")
+        app.logger.debug(f"[状态获取] 自己记录的状态: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         return jsonify(status), 200
     except Exception as e:
         app.logger.error(f"[状态获取] 获取状态时发生异常: {str(e)}", exc_info=True)

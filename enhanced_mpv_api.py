@@ -397,7 +397,7 @@ def get_mpv_property(property_name):
                         return False, f"Failed to parse but returning default value for {property_name}"
                     return None, "Failed to parse MPV response"
             else:
-                operation_logger.warning(f"[MPV属性] 从MPV收到空响应，属性: {property_name}")
+                operation_logger.debug(f"[MPV属性] 从MPV收到空响应，属性: {property_name}")
                 # 对于不同属性返回合理的默认值
                 if property_name == "filename":
                     # 特殊处理：如果收到空响应，尝试从path属性获取
@@ -1605,9 +1605,6 @@ def get_status():
     app.logger.debug("[状态获取] 开始获取MPV播放状态")
     
     try:
-        # 优先使用自己记录的状态
-        status.update(self_recorded_state)
-        
         # 获取MPV状态作为补充
         # 获取播放状态
         app.logger.debug("[状态获取] 尝试获取pause属性")
@@ -1616,10 +1613,20 @@ def get_status():
         
         # 获取 idle-active 状态 (是否空闲)
         idle_active, _ = get_mpv_property("idle-active")
-        status["idle_active"] = idle_active if idle_active is not None else False
         
         # 获取 eof-reached 状态 (是否播放结束)
         eof_reached, _ = get_mpv_property("eof-reached")
+        
+        # 更新自己记录的播放状态
+        if pause_state is not None:
+            self_recorded_state["paused"] = pause_state
+            self_recorded_state["playing"] = not pause_state
+        
+        # 优先使用自己记录的状态
+        status.update(self_recorded_state)
+        
+        # 添加额外的状态信息
+        status["idle_active"] = idle_active if idle_active is not None else False
         status["eof_reached"] = eof_reached if eof_reached is not None else False
         
         # 获取当前播放文件 - 尝试多种属性
@@ -1698,11 +1705,13 @@ def get_status():
         app.logger.debug("[状态获取] 尝试获取time-pos属性")
         position, position_msg = get_mpv_property("time-pos")
         app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
-        status["position"] = position if position is not None else 0
         
         app.logger.debug("[状态获取] 尝试获取duration属性")
         duration, duration_msg = get_mpv_property("duration")
         app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
+        
+        # 添加进度相关信息到返回状态
+        status["position"] = position if position is not None else 0
         status["duration"] = duration if duration is not None else 0
         
         # 计算播放进度百分比
@@ -1710,6 +1719,8 @@ def get_status():
             progress = (position / duration) * 100 if position else 0
             status["progress"] = round(progress, 2)
             app.logger.debug(f"[状态获取] 计算播放进度: {status['progress']}%")
+        else:
+            status["progress"] = 0
         
         status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
         status["mpv_error"] = MPV_RUNTIME_ERROR or ""

@@ -964,9 +964,8 @@ def playback_monitor_worker():
                 last_status['time_pos_stable_count'] = 0
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
-            # 调用get_status函数会自动更新self_recorded_state
             try:
-                # 模拟调用get_status来更新状态，或者直接获取MPV属性
+                # 获取MPV属性
                 position, _ = get_mpv_property("time-pos")
                 duration, _ = get_mpv_property("duration")
                 pause_state, _ = get_mpv_property("pause")
@@ -974,10 +973,25 @@ def playback_monitor_worker():
                 idle_active, _ = get_mpv_property("idle-active")
                 
                 # 更新自己记录的状态
-                current_position = position if position is not None else 0
-                current_duration = duration if duration is not None else 0
+                current_duration = duration if duration is not None else self_recorded_state["duration"]
                 
-                if current_duration and current_duration > 0:
+                # 计算当前位置：优先使用MPV返回的position，如果无效则使用自己记录的position加上时间差
+                if position is not None and position > 0:
+                    # MPV返回了有效位置，直接使用
+                    current_position = position
+                else:
+                    # MPV未返回有效位置，使用自己记录的位置加上时间差
+                    if not self_recorded_state["paused"] and self_recorded_state["playing"]:
+                        # 正在播放，计算位置增量
+                        position_increment = check_interval
+                        current_position = self_recorded_state["position"] + position_increment
+                    else:
+                        # 暂停或未播放，保持当前位置
+                        current_position = self_recorded_state["position"]
+                
+                # 确保位置不超过时长
+                if current_duration > 0:
+                    current_position = min(current_position, current_duration)
                     current_progress = (current_position / current_duration) * 100 if current_position else 0
                     current_progress = round(current_progress, 2)
                 else:
@@ -995,6 +1009,24 @@ def playback_monitor_worker():
                 # 继续执行，使用默认值
                 eof_reached = False
                 idle_active = False
+                # 即使出错，也要尝试更新位置
+                if not self_recorded_state["paused"] and self_recorded_state["playing"]:
+                    # 正在播放，计算位置增量
+                    position_increment = check_interval
+                    current_position = self_recorded_state["position"] + position_increment
+                    current_duration = self_recorded_state["duration"]
+                    
+                    # 确保位置不超过时长
+                    if current_duration > 0:
+                        current_position = min(current_position, current_duration)
+                        current_progress = (current_position / current_duration) * 100 if current_position else 0
+                        current_progress = round(current_progress, 2)
+                    else:
+                        current_progress = 0
+                    
+                    # 更新自己记录的状态
+                    self_recorded_state["position"] = current_position
+                    self_recorded_state["progress"] = current_progress
             
             # 获取自己记录的状态
             current_progress = self_recorded_state["progress"]
@@ -2288,12 +2320,31 @@ def control_playback_monitor():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def auto_play():
+    """自动播放函数，在应用启动后延迟执行"""
+    import time
+    # 延迟1秒执行，确保应用程序完全初始化
+    time.sleep(1)
+    app.logger.info("[AUTO_PLAY] 开始自动播放")
+    try:
+        # 调用next_track函数开始播放
+        response = next_track()
+        app.logger.info(f"[AUTO_PLAY] 自动播放完成，响应: {response}")
+    except Exception as e:
+        app.logger.error(f"[AUTO_PLAY] 自动播放失败: {str(e)}", exc_info=True)
+
 if __name__ == '__main__':
     # 注意：0.0.0.0 允许从外部设备访问
     import os
+    import threading
     
     # 启动播放结束监控线程
     start_playback_monitor()
+    
+    # 启动自动播放线程
+    auto_play_thread = threading.Thread(target=auto_play, daemon=True)
+    auto_play_thread.start()
+    app.logger.info("[AUTO_PLAY] 自动播放线程已启动")
     
     API_PORT = int(os.environ.get('API_PORT', 5000))
     print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")

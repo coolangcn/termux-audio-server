@@ -1031,8 +1031,8 @@ def playback_monitor_worker():
                     current_position = position
                 else:
                     # MPV未返回有效位置，使用自己记录的位置加上精确的时间差
-                    if not self_recorded_state["paused"] and self_recorded_state["playing"]:
-                        # 正在播放，计算精确的位置增量
+                    if not self_recorded_state["paused"] and self_recorded_state["playing"] and current_duration > 0:
+                        # 正在播放且有有效时长，计算精确的位置增量
                         # 记录上一次更新的时间
                         if "last_update_time" not in self_recorded_state:
                             self_recorded_state["last_update_time"] = current_time
@@ -1046,7 +1046,7 @@ def playback_monitor_worker():
                         position_increment = time_diff
                         current_position = self_recorded_state["position"] + position_increment
                     else:
-                        # 暂停或未播放，保持当前位置
+                        # 暂停、未播放或时长为0，保持当前位置
                         current_position = self_recorded_state["position"]
                 
                 # 确保位置不超过时长
@@ -1055,6 +1055,8 @@ def playback_monitor_worker():
                     current_progress = (current_position / current_duration) * 100 if current_position else 0
                     current_progress = round(current_progress, 3)  # 增加精度
                 else:
+                    # 时长为0时，重置位置为0
+                    current_position = 0
                     current_progress = 0
                 
                 # 更新自己记录的状态
@@ -2256,9 +2258,10 @@ def get_status():
             current_progress = round(current_progress, 2)
             app.logger.debug(f"[状态获取] 计算播放进度: {current_progress}%")
         else:
-            # 如果无法计算进度，使用自己记录的进度
-            current_progress = self_recorded_state["progress"]
-            app.logger.debug(f"[状态获取] 无法计算进度，使用自己记录的进度: {current_progress}%")
+            # 如果无法计算进度，重置位置和进度
+            current_position = 0
+            current_progress = 0
+            app.logger.debug(f"[状态获取] 无法计算进度，重置位置和进度")
         
         # 确保进度在合理范围内
         current_progress = max(0, min(100, current_progress))

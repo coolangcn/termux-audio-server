@@ -1025,14 +1025,14 @@ def playback_monitor_worker():
                 # 更新自己记录的状态
                 current_duration = duration if duration is not None else self_recorded_state["duration"]
                 
-                # 计算当前位置：优先使用MPV返回的position，如果无效则使用自己记录的位置加上精确的时间差
+                # 计算当前位置：优先使用MPV返回的position，但如果MPV返回的position为0且自己记录的position大于0，则使用自己记录的位置加上时间差
                 if position is not None and position > 0:
                     # MPV返回了有效位置，直接使用
                     current_position = position
                 else:
-                    # MPV未返回有效位置，使用自己记录的位置加上精确的时间差
-                    if not self_recorded_state["paused"] and self_recorded_state["playing"] and current_duration > 0:
-                        # 正在播放且有有效时长，计算精确的位置增量
+                    # MPV未返回有效位置或返回0，使用自己记录的位置加上精确的时间差
+                    if not self_recorded_state["paused"] and self_recorded_state["playing"]:
+                        # 正在播放，计算精确的位置增量
                         # 记录上一次更新的时间
                         if "last_update_time" not in self_recorded_state:
                             self_recorded_state["last_update_time"] = current_time
@@ -1046,7 +1046,7 @@ def playback_monitor_worker():
                         position_increment = time_diff
                         current_position = self_recorded_state["position"] + position_increment
                     else:
-                        # 暂停、未播放或时长为0，保持当前位置
+                        # 暂停或未播放，保持当前位置
                         current_position = self_recorded_state["position"]
                 
                 # 确保位置不超过时长
@@ -1055,8 +1055,7 @@ def playback_monitor_worker():
                     current_progress = (current_position / current_duration) * 100 if current_position else 0
                     current_progress = round(current_progress, 3)  # 增加精度
                 else:
-                    # 时长为0时，重置位置为0
-                    current_position = 0
+                    # 时长为0时，根据自己记录的位置计算进度
                     current_progress = 0
                 
                 # 更新自己记录的状态

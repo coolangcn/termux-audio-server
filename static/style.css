@@ -667,3 +667,18 @@ h1 {
     margin-right: 15px;
     margin-bottom: 5px;
 }
+
+.self-recorded-info {
+    margin-top: 10px;
+    font-size: 0.9em;
+    opacity: 0.8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.self-recorded-info div {
+    margin-right: 15px;
+    margin-bottom: 5px;
+    color: #4ade80; /* 使用绿色来区分自己记录的状态值 */
+}

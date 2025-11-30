@@ -46,6 +46,13 @@
                     <div>Mutagen时长: <span id="mutagen-duration">00:00</span></div>
                 </div>
 
+                <!-- 自己记录的状态值 -->
+                <div class="self-recorded-info">
+                    <div>自己记录的位置: <span id="self-recorded-position">0.00</span>秒</div>
+                    <div>自己记录的时长: <span id="self-recorded-duration">00:00</span></div>
+                    <div>自己记录的进度: <span id="self-recorded-progress">0.00</span>%</div>
+                </div>
+
                 <!-- 播放进度条 -->
                 <div class="progress-control">
                     <div class="time-labels">
@@ -199,6 +206,11 @@
                         document.getElementById('ffmpeg-duration').textContent = formatTime(data.duration_info.ffmpeg);
                         document.getElementById('mutagen-duration').textContent = formatTime(data.duration_info.mutagen);
                     }
+                    
+                    // 更新自己记录的状态值
+                    document.getElementById('self-recorded-position').textContent = data.self_recorded_position.toFixed(2);
+                    document.getElementById('self-recorded-duration').textContent = formatTime(data.self_recorded_duration);
+                    document.getElementById('self-recorded-progress').textContent = data.self_recorded_progress.toFixed(2);
                     
                     // 处理遮罩提醒
                     if (data.mask_reminder) {

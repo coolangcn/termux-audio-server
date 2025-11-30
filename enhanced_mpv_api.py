@@ -80,6 +80,10 @@ self_recorded_state = {
 }
 timeline_lock = threading.RLock()  # 用于线程安全
 
+# 计时线程控制变量
+timer_thread_running = False  # 计时线程是否正在运行
+timer_thread = None  # 计时线程对象
+
 # 配置操作日志
 LOG_DIR = "/data/data/com.termux/files/home/audio_logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -943,6 +947,54 @@ def auto_cache_worker():
             time.sleep(600)  # 出错后也等待10分钟
 
 
+def timer_worker():
+    """精确计时线程，每100毫秒更新一次播放位置"""
+    global timer_thread_running, self_recorded_state
+    app.logger.info("[TIMER_WORKER] 精确计时线程已启动")
+    
+    # 计时精度（秒）
+    timer_precision = 0.1  # 100毫秒
+    
+    while timer_thread_running:
+        try:
+            # 检查播放状态
+            is_playing = self_recorded_state["playing"]
+            is_paused = self_recorded_state["paused"]
+            current_position = self_recorded_state["position"]
+            current_duration = self_recorded_state["duration"]
+            
+            # 只有当正在播放且未暂停时，才更新播放位置
+            if is_playing and not is_paused:
+                # 增加播放位置（100毫秒）
+                new_position = current_position + timer_precision
+                
+                # 检查是否达到文件时长
+                if current_duration > 0 and new_position >= current_duration:
+                    # 达到文件时长，重置播放位置
+                    new_position = 0
+                    # 更新播放状态
+                    self_recorded_state["position"] = new_position
+                    self_recorded_state["progress"] = 0
+                    app.logger.info(f"[TIMER_WORKER] 播放结束，重置播放位置到 0")
+                else:
+                    # 更新播放位置
+                    self_recorded_state["position"] = new_position
+                    
+                    # 计算并更新播放进度百分比
+                    if current_duration > 0:
+                        new_progress = (new_position / current_duration) * 100
+                        self_recorded_state["progress"] = round(new_progress, 3)
+            
+            # 等待100毫秒
+            time.sleep(timer_precision)
+        except Exception as e:
+            app.logger.error(f"[TIMER_WORKER] 计时线程出错: {str(e)}", exc_info=True)
+            # 出错后继续执行，避免线程退出
+            time.sleep(timer_precision)
+    
+    app.logger.info("[TIMER_WORKER] 精确计时线程已停止")
+
+
 def playback_monitor_worker():
     """播放结束监控工作线程 - 检测播放结束并自动播放下一首"""
     global playback_monitor_running, current_playing_file, self_recorded_state
@@ -997,76 +1049,16 @@ def playback_monitor_worker():
                 idle_active = False  # 不再从MPV获取idle-active状态，默认设为False
                 
                 # 不再重试获取MPV属性，完全依赖自己记录的状态
-                position = None
-                duration = None
-                pause_state = None
-                
-                # 获取当前时间，用于更精确的位置计算
-                current_time = time.time()
+                # 计时由专门的timer_worker线程处理
                 
                 # 不再从MPV获取状态，完全依赖自己记录的状态
-                current_duration = self_recorded_state["duration"]
-                is_paused = self_recorded_state["paused"]
-                is_playing = self_recorded_state["playing"]
-                
-                # 计算当前位置：使用自己记录的位置加上时间差
-                if not is_paused and is_playing:
-                    # 正在播放，计算精确的位置增量
-                    # 记录上一次更新的时间
-                    if "last_update_time" not in self_recorded_state:
-                        self_recorded_state["last_update_time"] = current_time
-                    
-                    # 计算时间差
-                    time_diff = current_time - self_recorded_state["last_update_time"]
-                    # 更新上一次更新的时间
-                    self_recorded_state["last_update_time"] = current_time
-                    
-                    # 计算位置增量
-                    position_increment = time_diff
-                    current_position = self_recorded_state["position"] + position_increment
-                else:
-                    # 暂停或未播放，保持当前位置
-                    current_position = self_recorded_state["position"]
-                
-                # 确保位置不超过时长
-                if current_duration > 0:
-                    current_position = min(current_position, current_duration)
-                    current_progress = (current_position / current_duration) * 100 if current_position else 0
-                    current_progress = round(current_progress, 3)  # 增加精度
-                else:
-                    # 时长为0时，根据自己记录的位置计算进度
-                    current_progress = 0
-                
-                # 更新自己记录的状态
-                self_recorded_state["position"] = current_position
-                self_recorded_state["progress"] = current_progress
-                self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
-                
-                # 不再从MPV获取的状态更新自己记录的状态，完全依赖自己记录的状态
-                # 不再使用MPV返回的位置进行进度保护
+                # 计时由专门的timer_worker线程处理
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
                 # 继续执行，使用默认值
                 eof_reached = False
                 idle_active = False
-                # 即使出错，也要尝试更新位置
-                if not self_recorded_state["paused"] and self_recorded_state["playing"]:
-                    # 正在播放，计算位置增量
-                    position_increment = check_interval
-                    current_position = self_recorded_state["position"] + position_increment
-                    current_duration = self_recorded_state["duration"]
-                    
-                    # 确保位置不超过时长
-                    if current_duration > 0:
-                        current_position = min(current_position, current_duration)
-                        current_progress = (current_position / current_duration) * 100 if current_position else 0
-                        current_progress = round(current_progress, 2)
-                    else:
-                        current_progress = 0
-                    
-                    # 更新自己记录的状态
-                    self_recorded_state["position"] = current_position
-                    self_recorded_state["progress"] = current_progress
+                # 计时由专门的timer_worker线程处理，这里不需要更新位置
             
             # 获取自己记录的状态
             current_progress = self_recorded_state["progress"]
@@ -1329,7 +1321,7 @@ def pause_toggle():
     # 2. 如果没有播放文件，切换状态后播放下一首
     operation_logger.info("[播放控制] 切换播放/暂停状态")
     # 发送遮罩提醒
-    new_state = "暂停" if is_paused else "播放"
+    new_state = "播放" if is_paused else "暂停"
     send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
@@ -2779,6 +2771,19 @@ def web_control_panel():
     """网页控制面板"""
     return render_template('index.html')
 
+def start_timer_thread():
+    """启动精确计时线程"""
+    global timer_thread, timer_thread_running
+    
+    if not timer_thread_running:
+        timer_thread_running = True
+        timer_thread = threading.Thread(target=timer_worker, daemon=True)
+        timer_thread.start()
+        app.logger.info("[TIMER_WORKER] 精确计时线程已启动")
+    
+    return True, "精确计时线程已启动"
+
+
 def start_playback_monitor():
     """启动播放结束监控线程"""
     global playback_monitor_thread, playback_monitor_running
@@ -2972,6 +2977,9 @@ if __name__ == '__main__':
     # 注意：0.0.0.0 允许从外部设备访问
     import os
     import threading
+    
+    # 启动精确计时线程
+    start_timer_thread()
     
     # 启动播放结束监控线程
     start_playback_monitor()

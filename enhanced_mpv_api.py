@@ -335,42 +335,6 @@ def get_file_duration(file_path):
             operation_logger.debug(f"[文件时长] 使用ffprobe获取到时长: {duration}秒")
             return duration
         
-        # 尝试使用ffmpeg获取时长
-        try:
-            cmd = [
-                'ffmpeg',
-                '-i', file_path,
-                '-v', 'error',
-                '-f', 'null',
-                '-'
-            ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            if result.stderr.strip():
-                # 从ffmpeg的错误输出中提取时长
-                import re
-                duration_match = re.search(r"Duration: (\d+):(\d+):(\d+)\.(\d+)", result.stderr)
-                if duration_match:
-                    hours = int(duration_match.group(1))
-                    minutes = int(duration_match.group(2))
-                    seconds = int(duration_match.group(3))
-                    milliseconds = int(duration_match.group(4)) / 100
-                    duration = hours * 3600 + minutes * 60 + seconds + milliseconds
-                    operation_logger.debug(f"[文件时长] 使用ffmpeg获取到时长: {duration}秒")
-                    return duration
-        except Exception as e:
-            operation_logger.debug(f"[文件时长] 使用ffmpeg获取时长失败: {e}")
-        
-        # 尝试使用mutagen库获取时长
-        try:
-            import mutagen
-            audio = mutagen.File(file_path)
-            if audio and hasattr(audio.info, 'length'):
-                duration = audio.info.length
-                operation_logger.debug(f"[文件时长] 使用mutagen获取到时长: {duration}秒")
-                return duration
-        except Exception as e:
-            operation_logger.debug(f"[文件时长] 使用mutagen获取时长失败: {e}")
-            
         operation_logger.debug(f"[文件时长] 无法获取文件时长: {file_path}")
         return 0
     except Exception as e:
@@ -1428,6 +1392,10 @@ def next_track():
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 启动渐入效果线程
+            fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
+            fade_in_thread.start()
+            
             # 记录到时间轴
             add_to_timeline(
                 "next_track", 
@@ -1470,6 +1438,14 @@ def next_track():
                 "--really-quiet",  # 减少输出噪音
                 local_path
             ])
+            
+            # 启动渐入效果线程（延迟1秒，确保MPV已经启动）
+            def delayed_fade_in():
+                time.sleep(1.0)  # 等待MPV启动
+                fade_in(3.0)
+            
+            fade_in_thread = threading.Thread(target=delayed_fade_in, daemon=True)
+            fade_in_thread.start()
             
             return jsonify({
                 "status": "ok", 
@@ -1556,6 +1532,10 @@ def prev_track():
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 启动渐入效果线程
+            fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
+            fade_in_thread.start()
+            
             # 发送遮罩提醒
             send_mask_reminder(f"成功切换到上一首歌曲: {prev_file}", "prev_track_success")
             
@@ -1599,6 +1579,14 @@ def prev_track():
                 "--really-quiet",  # 减少输出噪音
                 local_path
             ])
+            
+            # 启动渐入效果线程（延迟1秒，确保MPV已经启动）
+            def delayed_fade_in():
+                time.sleep(1.0)  # 等待MPV启动
+                fade_in(3.0)
+            
+            fade_in_thread = threading.Thread(target=delayed_fade_in, daemon=True)
+            fade_in_thread.start()
             
             # 发送遮罩提醒
             send_mask_reminder(f"成功切换到上一首歌曲: {prev_file} (重启MPV方式)", "prev_track_success")
@@ -1803,6 +1791,32 @@ def seek():
 
 @app.route('/mpv/play/file/<path:filename>', methods=['GET'])
 @log_operation("播放指定文件")
+def fade_in(duration=3.0):
+    """实现音量渐入效果
+    
+    Args:
+        duration: 渐入时长（秒），默认3秒
+    """
+    try:
+        # 先将音量设置为0
+        send_mpv_command(["set", "volume", "0"])
+        
+        # 计算每步的音量增量和间隔时间
+        steps = 30  # 分30步完成渐入
+        step_duration = duration / steps
+        volume_increment = 100 / steps
+        
+        # 逐渐增加音量
+        for i in range(steps + 1):
+            current_volume = int(i * volume_increment)
+            send_mpv_command(["set", "volume", str(current_volume)])
+            time.sleep(step_duration)
+        
+        app.logger.info(f"[FADE_IN] 音量渐入效果完成，时长: {duration}秒")
+    except Exception as e:
+        app.logger.error(f"[FADE_IN] 音量渐入效果失败: {str(e)}")
+
+
 def play_file(filename):
     """播放指定文件（按需从NAS拉取）"""
     # 声明全局变量
@@ -1832,6 +1846,10 @@ def play_file(filename):
         self_recorded_state["playing"] = True
         self_recorded_state["paused"] = False
         self_recorded_state["current_file"] = filename
+        
+        # 启动渐入效果线程
+        fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
+        fade_in_thread.start()
         
         # 发送遮罩提醒
         send_mask_reminder(f"成功播放文件: {filename}", "play_file_success")
@@ -1872,6 +1890,14 @@ def play_file(filename):
         self_recorded_state["playing"] = True
         self_recorded_state["paused"] = False
         self_recorded_state["current_file"] = filename
+        
+        # 启动渐入效果线程（延迟1秒，确保MPV已经启动）
+        def delayed_fade_in():
+            time.sleep(1.0)  # 等待MPV启动
+            fade_in(3.0)
+        
+        fade_in_thread = threading.Thread(target=delayed_fade_in, daemon=True)
+        fade_in_thread.start()
         
         # 发送遮罩提醒
         send_mask_reminder(f"成功播放文件: {filename} (重启MPV方式)", "play_file_success")
@@ -2118,60 +2144,15 @@ def get_status():
                     except Exception as e:
                         app.logger.debug(f"[状态获取] 使用ffprobe获取时长失败: {e}")
                     
-                    # 使用ffmpeg获取时长
-                    ffmpeg_duration = 0
-                    try:
-                        cmd = [
-                            'ffmpeg',
-                            '-i', file_path,
-                            '-v', 'error',
-                            '-f', 'null',
-                            '-'
-                        ]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                        if result.stderr.strip():
-                            # 从ffmpeg的错误输出中提取时长
-                            import re
-                            duration_match = re.search(r"Duration: (\d+):(\d+):(\d+)\.(\d+)", result.stderr)
-                            if duration_match:
-                                hours = int(duration_match.group(1))
-                                minutes = int(duration_match.group(2))
-                                seconds = int(duration_match.group(3))
-                                milliseconds = int(duration_match.group(4)) / 100
-                                ffmpeg_duration = hours * 3600 + minutes * 60 + seconds + milliseconds
-                                app.logger.debug(f"[状态获取] 使用ffmpeg获取到时长: {ffmpeg_duration}秒")
-                    except Exception as e:
-                        app.logger.debug(f"[状态获取] 使用ffmpeg获取时长失败: {e}")
                     
-                    # 使用mutagen获取时长
-                    mutagen_duration = 0
-                    try:
-                        import mutagen
-                        audio = mutagen.File(file_path)
-                        if audio and hasattr(audio.info, 'length'):
-                            mutagen_duration = audio.info.length
-                            app.logger.debug(f"[状态获取] 使用mutagen获取到时长: {mutagen_duration}秒")
-                    except Exception as e:
-                        app.logger.debug(f"[状态获取] 使用mutagen获取时长失败: {e}")
-                    
-                    # 选择最佳时长
-                    file_duration = 0
+                    # 只使用ffprobe获取时长
                     if ffprobe_duration > 0:
-                        file_duration = ffprobe_duration
-                    elif ffmpeg_duration > 0:
-                        file_duration = ffmpeg_duration
-                    elif mutagen_duration > 0:
-                        file_duration = mutagen_duration
-                    
-                    if file_duration > 0:
-                        duration = file_duration
+                        duration = ffprobe_duration
                         app.logger.debug(f"[状态获取] 使用文件路径获取到时长: {duration}秒")
                     
-                    # 添加所有方式的时长信息到状态
+                    # 添加ffprobe时长信息到状态
                     status["duration_info"] = {
                         "ffprobe": ffprobe_duration,
-                        "ffmpeg": ffmpeg_duration,
-                        "mutagen": mutagen_duration,
                         "file_path": file_path
                     }
             except Exception as e:

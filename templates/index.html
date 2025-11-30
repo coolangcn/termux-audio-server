@@ -208,8 +208,6 @@
                     // 更新duration_info中的时长信息
                     if (data.duration_info) {
                         document.getElementById('ffprobe-duration').textContent = formatTime(data.duration_info.ffprobe);
-                        document.getElementById('ffmpeg-duration').textContent = formatTime(data.duration_info.ffmpeg);
-                        document.getElementById('mutagen-duration').textContent = formatTime(data.duration_info.mutagen);
                     }
                     
                     // 更新自己记录的状态值

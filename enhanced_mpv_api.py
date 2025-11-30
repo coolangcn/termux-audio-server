@@ -1116,7 +1116,9 @@ def playback_monitor_worker():
                 last_status['time_pos_stable_count'] = 0
                 last_status['time_pos'] = current_position
             else:
-                last_status['time_pos_stable_count'] += 1
+                # 只有当duration有效或current_position > 0时，才增加稳定计数
+                if current_duration > 0 or current_position > 0:
+                    last_status['time_pos_stable_count'] += 1
             
             # 检测即将切换下一首的提醒条件
             # 定义提醒阈值（进度达到95%时提醒）
@@ -1179,8 +1181,8 @@ def playback_monitor_worker():
                     
                     playback_ended = True
                     end_reason = f"进度稳定检测到播放结束（进度: {current_progress}%）"
-            elif not is_paused and is_playing and filename and last_status['time_pos_stable_count'] >= last_status['stable_threshold']:
-                # 适用于无法获取duration的情况
+            elif not is_paused and is_playing and filename and last_status['time_pos_stable_count'] >= last_status['stable_threshold'] and (current_duration > 0 or current_position > 0):
+                # 适用于无法获取duration的情况，但只有当duration有效或current_position > 0时才触发
                 playback_ended = True
                 end_reason = f"time-pos稳定检测到播放结束（稳定次数: {last_status['time_pos_stable_count']}）"
             

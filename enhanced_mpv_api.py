@@ -1291,57 +1291,36 @@ def get_download_progress(task_id):
 @app.route('/mpv/pause', methods=['GET'])
 @log_operation("播放/暂停切换")
 def pause_toggle():
-    # 检查当前状态
-    filename, filename_msg = get_mpv_property("filename")
-    idle, idle_msg = get_mpv_property("idle-active")
+    # 使用全局变量
+    global self_recorded_state, current_playing_file
     
-    # 使用全局变量作为后备检查
-    global current_playing_file, self_recorded_state
-    
-    # 获取自己记录的暂停状态
-    pause_state = self_recorded_state["paused"]
+    # 从自己记录的状态中获取当前播放状态
+    is_paused = self_recorded_state["paused"]
+    is_playing = self_recorded_state["playing"]
+    current_file = self_recorded_state["current_file"]
     
     # 改进播放状态判断：
-    # 1. 检查filename是否有值
-    # 2. 检查current_playing_file是否有值
-    # 3. 检查idle状态，如果不是空闲状态，说明正在播放
-    # 4. 检查path属性，作为filename的后备
-    path, path_msg = get_mpv_property("path")
-    has_path = path and path.strip()
+    # 1. 自己记录的状态中有文件名
+    # 2. current_playing_file有值
     
     # 详细的调试日志
-    operation_logger.debug(f"[播放控制] 原始状态: filename={repr(filename)}, filename_msg={filename_msg}")
-    operation_logger.debug(f"[播放控制] 原始状态: pause_state={pause_state} (自己记录的状态)")
-    operation_logger.debug(f"[播放控制] 原始状态: idle={idle}, idle_msg={idle_msg}")
-    operation_logger.debug(f"[播放控制] 原始状态: path={repr(path)}, path_msg={path_msg}")
-    operation_logger.debug(f"[播放控制] 原始状态: current_playing_file={repr(current_playing_file)}")
+    operation_logger.debug(f"[播放控制] 自己记录的原始状态: {json.dumps(self_recorded_state, ensure_ascii=False)}")
+    operation_logger.debug(f"[播放控制] current_playing_file: {repr(current_playing_file)}")
     
     # 只要满足以下条件之一，就认为有播放文件：
-    # 1. filename有值
-    # 2. path有值
-    # 3. current_playing_file有值
-    # 4. 不是空闲状态（idle为False）
+    # 1. 自己记录的状态中有文件名
+    # 2. current_playing_file有值
     has_playing_file = False
     
-    # 条件1：filename有值
-    if filename and isinstance(filename, str) and filename.strip():
+    # 条件1：自己记录的状态中有文件名
+    if current_file and current_file.strip():
         has_playing_file = True
-        operation_logger.debug(f"[播放控制] 条件1满足：filename有值")
+        operation_logger.debug(f"[播放控制] 条件1满足：自己记录的状态中有文件名")
     
-    # 条件2：path有值
-    if not has_playing_file and path and isinstance(path, str) and path.strip():
+    # 条件2：current_playing_file有值
+    if not has_playing_file and current_playing_file and current_playing_file.strip():
         has_playing_file = True
-        operation_logger.debug(f"[播放控制] 条件2满足：path有值")
-    
-    # 条件3：current_playing_file有值
-    if not has_playing_file and current_playing_file and isinstance(current_playing_file, str) and current_playing_file.strip():
-        has_playing_file = True
-        operation_logger.debug(f"[播放控制] 条件3满足：current_playing_file有值")
-    
-    # 条件4：不是空闲状态
-    if not has_playing_file and idle is False:
-        has_playing_file = True
-        operation_logger.debug(f"[播放控制] 条件4满足：不是空闲状态")
+        operation_logger.debug(f"[播放控制] 条件2满足：current_playing_file有值")
     
     operation_logger.debug(f"[播放控制] 最终has_playing_file={has_playing_file}")
     
@@ -1350,21 +1329,20 @@ def pause_toggle():
     # 2. 如果没有播放文件，切换状态后播放下一首
     operation_logger.info("[播放控制] 切换播放/暂停状态")
     # 发送遮罩提醒
-    new_state = "暂停" if not pause_state else "播放"
+    new_state = "暂停" if is_paused else "播放"
     send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息
-        current_file_info = filename or os.path.basename(path) if path else current_playing_file or "未知文件"
+        current_file_info = current_file or current_playing_file or "未知文件"
         # 记录到时间轴
         add_to_timeline(
             "pause_toggle", 
             "播放/暂停切换", 
-            {"current_file": current_file_info, "pause_state": not pause_state}
+            {"current_file": current_file_info, "pause_state": not is_paused}
         )
         # 更新自己记录的状态
-        global self_recorded_state
-        self_recorded_state["paused"] = not pause_state
+        self_recorded_state["paused"] = not is_paused
         self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
         app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         
@@ -1376,7 +1354,7 @@ def pause_toggle():
             send_mask_reminder("没有播放文件，触发播放下一首", "play_next")
             return next_track()
         
-        return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
+        return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not is_paused}), 200
     else:
         # 如果发送命令失败，返回错误信息
         operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")

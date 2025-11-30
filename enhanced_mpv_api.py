@@ -1408,7 +1408,7 @@ def pause_toggle():
             # 更新自己记录的状态
             global self_recorded_state
             self_recorded_state["paused"] = not pause_state
-            self_recorded_state["playing"] = not pause_state
+            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
             app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
             return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
         else:

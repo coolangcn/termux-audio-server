@@ -1065,9 +1065,14 @@ def playback_monitor_worker():
                 self_recorded_state["progress"] = current_progress
                 self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
                 
+                # 更新暂停和播放状态，即使获取失败也使用默认值
                 if pause_state is not None:
                     self_recorded_state["paused"] = pause_state
                     self_recorded_state["playing"] = not pause_state
+                else:
+                    # 默认状态：未暂停，正在播放
+                    self_recorded_state["paused"] = False
+                    self_recorded_state["playing"] = True
                 
                 # 额外的进度保护：如果MPV返回的位置与自己记录的位置差异过大，使用MPV返回的位置
                 if position is not None and position > 0:

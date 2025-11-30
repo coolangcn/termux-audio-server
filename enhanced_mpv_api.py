@@ -2189,12 +2189,10 @@ def get_status():
         # 添加MPV获取的时长信息
         status["mpv_duration"] = duration
         
-        # 确保duration_info字段存在并包含所有方式的时长信息
+        # 确保duration_info字段存在并只包含FFprobe时长信息
         if "duration_info" not in status:
             status["duration_info"] = {
                 "ffprobe": 0,
-                "ffmpeg": 0,
-                "mutagen": 0,
                 "file_path": None
             }
         
@@ -2270,11 +2268,9 @@ def get_status():
                 except Exception as e:
                     app.logger.debug(f"[状态获取] 使用mutagen获取时长失败: {e}")
                 
-                # 更新duration_info字段
+                # 更新duration_info字段，只保留FFprobe时长
                 status["duration_info"] = {
                     "ffprobe": ffprobe_duration,
-                    "ffmpeg": ffmpeg_duration,
-                    "mutagen": mutagen_duration,
                     "file_path": file_path
                 }
         except Exception as e:

@@ -39,11 +39,7 @@
 
                 <!-- 时长信息 -->
                 <div class="duration-info">
-                    <div>最终时长: <span id="final-duration">00:00</span></div>
-                    <div>MPV时长: <span id="mpv-duration">00:00</span></div>
                     <div>FFprobe时长: <span id="ffprobe-duration">00:00</span></div>
-                    <div>FFmpeg时长: <span id="ffmpeg-duration">00:00</span></div>
-                    <div>Mutagen时长: <span id="mutagen-duration">00:00</span></div>
                 </div>
 
                 <!-- 自己记录的状态值 -->
@@ -201,11 +197,7 @@
                     // 更新进度条
                     updateProgressDisplay(data.position, data.duration);
                     
-                    // 更新多种方式的时长信息
-                    document.getElementById('final-duration').textContent = formatTime(data.duration);
-                    document.getElementById('mpv-duration').textContent = formatTime(data.mpv_duration);
-                    
-                    // 更新duration_info中的时长信息
+                    // 更新FFprobe时长信息
                     if (data.duration_info) {
                         document.getElementById('ffprobe-duration').textContent = formatTime(data.duration_info.ffprobe);
                     }

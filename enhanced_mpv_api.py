@@ -991,63 +991,42 @@ def playback_monitor_worker():
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
             try:
-                # 获取MPV属性，增强可靠性
-                max_retries = 5
-                retry_count = 0
+                # 不再从MPV获取属性，完全依赖自己记录的状态
+                # 获取 eof-reached 状态 (是否播放结束) - 仅用于检测播放结束
+                eof_reached, _ = get_mpv_property("eof-reached")
+                idle_active = False  # 不再从MPV获取idle-active状态，默认设为False
+                
+                # 不再重试获取MPV属性，完全依赖自己记录的状态
                 position = None
                 duration = None
                 pause_state = None
-                eof_reached = None
-                idle_active = None
-                
-                # 重试获取MPV属性，重点获取time-pos
-                while retry_count < max_retries:
-                    # 单独获取time-pos，增加重试次数
-                    time_pos_result = get_mpv_property("time-pos")
-                    position = time_pos_result[0]
-                    
-                    # 获取其他属性
-                    duration, _ = get_mpv_property("duration")
-                    pause_state, _ = get_mpv_property("pause")
-                    eof_reached, _ = get_mpv_property("eof-reached")
-                    idle_active, _ = get_mpv_property("idle-active")
-                    
-                    # 如果获取到了有效位置，就退出重试
-                    if position is not None and position > 0:
-                        break
-                    
-                    retry_count += 1
-                    time.sleep(0.05)  # 短暂等待后重试，缩短重试间隔
                 
                 # 获取当前时间，用于更精确的位置计算
                 current_time = time.time()
                 
-                # 更新自己记录的状态
-                current_duration = duration if duration is not None else self_recorded_state["duration"]
+                # 不再从MPV获取状态，完全依赖自己记录的状态
+                current_duration = self_recorded_state["duration"]
+                is_paused = self_recorded_state["paused"]
+                is_playing = self_recorded_state["playing"]
                 
-                # 计算当前位置：优先使用MPV返回的position，但如果MPV返回的position为0且自己记录的position大于0，则使用自己记录的位置加上时间差
-                if position is not None and position > 0:
-                    # MPV返回了有效位置，直接使用
-                    current_position = position
-                else:
-                    # MPV未返回有效位置或返回0，使用自己记录的位置加上精确的时间差
-                    if not self_recorded_state["paused"] and self_recorded_state["playing"]:
-                        # 正在播放，计算精确的位置增量
-                        # 记录上一次更新的时间
-                        if "last_update_time" not in self_recorded_state:
-                            self_recorded_state["last_update_time"] = current_time
-                        
-                        # 计算时间差
-                        time_diff = current_time - self_recorded_state["last_update_time"]
-                        # 更新上一次更新的时间
+                # 计算当前位置：使用自己记录的位置加上时间差
+                if not is_paused and is_playing:
+                    # 正在播放，计算精确的位置增量
+                    # 记录上一次更新的时间
+                    if "last_update_time" not in self_recorded_state:
                         self_recorded_state["last_update_time"] = current_time
-                        
-                        # 计算位置增量
-                        position_increment = time_diff
-                        current_position = self_recorded_state["position"] + position_increment
-                    else:
-                        # 暂停或未播放，保持当前位置
-                        current_position = self_recorded_state["position"]
+                    
+                    # 计算时间差
+                    time_diff = current_time - self_recorded_state["last_update_time"]
+                    # 更新上一次更新的时间
+                    self_recorded_state["last_update_time"] = current_time
+                    
+                    # 计算位置增量
+                    position_increment = time_diff
+                    current_position = self_recorded_state["position"] + position_increment
+                else:
+                    # 暂停或未播放，保持当前位置
+                    current_position = self_recorded_state["position"]
                 
                 # 确保位置不超过时长
                 if current_duration > 0:
@@ -1060,29 +1039,11 @@ def playback_monitor_worker():
                 
                 # 更新自己记录的状态
                 self_recorded_state["position"] = current_position
-                self_recorded_state["duration"] = current_duration
                 self_recorded_state["progress"] = current_progress
                 self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
                 
-                # 不再从MPV获取的状态更新自己记录的状态，优先使用自己记录的状态
-                # 只有当自己记录的状态无效时，才使用从MPV获取的状态或默认值
-                if "paused" not in self_recorded_state or self_recorded_state["paused"] is None:
-                    if pause_state is not None:
-                        self_recorded_state["paused"] = pause_state
-                        self_recorded_state["playing"] = not pause_state
-                    else:
-                        # 默认状态：未暂停，正在播放
-                        self_recorded_state["paused"] = False
-                        self_recorded_state["playing"] = True
-                
-                # 额外的进度保护：如果MPV返回的位置与自己记录的位置差异过大，使用MPV返回的位置
-                if position is not None and position > 0:
-                    position_diff = abs(position - self_recorded_state["position"])
-                    if position_diff > 0.5:  # 差异超过0.5秒，可能是MPV状态异常
-                        app.logger.warning(f"[PLAYBACK_MONITOR] MPV位置与自己记录的位置差异过大: {position_diff}秒，使用MPV返回的位置")
-                        self_recorded_state["position"] = position
-                        current_position = position
-                        self_recorded_state["last_update_time"] = current_time  # 更新最后更新时间
+                # 不再从MPV获取的状态更新自己记录的状态，完全依赖自己记录的状态
+                # 不再使用MPV返回的位置进行进度保护
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
                 # 继续执行，使用默认值
@@ -1383,41 +1344,42 @@ def pause_toggle():
     operation_logger.debug(f"[播放控制] 最终has_playing_file={has_playing_file}")
     
     # 核心逻辑：
-    # 1. 如果没有播放文件，直接播放下一首
-    # 2. 如果有播放文件，切换播放/暂停状态
-    if not has_playing_file:
-        # 情况1：没有播放文件，直接播放下一首
-        operation_logger.info("[播放控制] 没有播放文件，触发播放下一首")
-        # 发送遮罩提醒
-        send_mask_reminder("没有播放文件，触发播放下一首", "play_next")
-        return next_track()
+    # 1. 总是切换播放/暂停状态，不管是否有播放文件
+    # 2. 如果没有播放文件，切换状态后播放下一首
+    operation_logger.info("[播放控制] 切换播放/暂停状态")
+    # 发送遮罩提醒
+    new_state = "暂停" if pause_state else "播放"
+    send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
+    success, message = send_mpv_command(["cycle", "pause"])
+    if success:
+        # 获取当前播放文件信息
+        current_file_info = filename or os.path.basename(path) if path else current_playing_file or "未知文件"
+        # 记录到时间轴
+        add_to_timeline(
+            "pause_toggle", 
+            "播放/暂停切换", 
+            {"current_file": current_file_info, "pause_state": not pause_state}
+        )
+        # 更新自己记录的状态
+        global self_recorded_state
+        self_recorded_state["paused"] = not pause_state
+        self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
+        app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
+        
+        # 如果没有播放文件，播放下一首
+        if not has_playing_file:
+            # 情况1：没有播放文件，触发播放下一首
+            operation_logger.info("[播放控制] 没有播放文件，触发播放下一首")
+            # 发送遮罩提醒
+            send_mask_reminder("没有播放文件，触发播放下一首", "play_next")
+            return next_track()
+        
+        return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
     else:
-        # 情况2：有播放文件，切换播放/暂停状态
-        operation_logger.info("[播放控制] 有播放文件，切换播放/暂停状态")
-        # 发送遮罩提醒
-        new_state = "暂停" if pause_state else "播放"
-        send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
-        success, message = send_mpv_command(["cycle", "pause"])
-        if success:
-            # 获取当前播放文件信息
-            current_file_info = filename or os.path.basename(path) if path else current_playing_file or "未知文件"
-            # 记录到时间轴
-            add_to_timeline(
-                "pause_toggle", 
-                "播放/暂停切换", 
-                {"current_file": current_file_info, "pause_state": not pause_state}
-            )
-            # 更新自己记录的状态
-            global self_recorded_state
-            self_recorded_state["paused"] = not pause_state
-            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
-            app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
-            return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not pause_state}), 200
-        else:
-            # 如果发送命令失败，返回错误信息
-            operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")
-            send_mask_reminder(f"切换播放/暂停状态失败: {message}", "pause_toggle_error")
-            return jsonify({"status": "error", "message": message}), 500
+        # 如果发送命令失败，返回错误信息
+        operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")
+        send_mask_reminder(f"切换播放/暂停状态失败: {message}", "pause_toggle_error")
+        return jsonify({"status": "error", "message": message}), 500
 
 @app.route('/mpv/next', methods=['GET'])
 @log_operation("下一首")
@@ -2013,29 +1975,15 @@ def get_status():
     app.logger.debug("[状态获取] 开始获取MPV播放状态")
     
     try:
-        # 获取MPV状态作为补充
-        # 获取播放状态
-        app.logger.debug("[状态获取] 尝试获取pause属性")
-        pause_state, pause_msg = get_mpv_property("pause")
-        app.logger.debug(f"[状态获取] 获取pause属性结果: {pause_state}, 消息: {pause_msg}")
-        
-        # 获取 idle-active 状态 (是否空闲)
-        idle_active, _ = get_mpv_property("idle-active")
-        
-        # 获取 eof-reached 状态 (是否播放结束)
-        eof_reached, _ = get_mpv_property("eof-reached")
-        
-        # 不再从MPV获取的状态更新自己记录的状态，优先使用自己记录的状态
-        # 只有当自己记录的状态无效时，才使用从MPV获取的状态
-        if ("paused" not in self_recorded_state or self_recorded_state["paused"] is None) and pause_state is not None:
-            self_recorded_state["paused"] = pause_state
-            self_recorded_state["playing"] = not pause_state
-        
+        # 不再从MPV获取状态，完全依赖自己记录的状态
         # 优先使用自己记录的状态
         status.update(self_recorded_state)
         
+        # 获取 eof-reached 状态 (是否播放结束) - 仅用于检测播放结束
+        eof_reached, _ = get_mpv_property("eof-reached")
+        
         # 添加额外的状态信息
-        status["idle_active"] = idle_active if idle_active is not None else False
+        status["idle_active"] = False  # 不再从MPV获取idle-active状态，默认设为False
         status["eof_reached"] = eof_reached if eof_reached is not None else False
         
         # 获取当前播放文件 - 尝试多种属性

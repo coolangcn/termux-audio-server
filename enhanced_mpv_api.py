@@ -2256,7 +2256,12 @@ def get_status():
                 app.logger.debug(f"[状态获取] 使用文件路径获取时长失败: {e}")
         
         # 添加进度相关信息到返回状态
-        current_position = position if position is not None else self_recorded_state["position"]
+        # 优先使用MPV返回的position，但如果MPV返回的position为0且自己记录的position大于0，则使用自己记录的position
+        if position is not None and position > 0:
+            current_position = position
+        else:
+            current_position = self_recorded_state["position"]
+        
         current_duration = duration if duration is not None else self_recorded_state["duration"]
         
         # 计算播放进度百分比

@@ -1293,11 +1293,13 @@ def get_download_progress(task_id):
 def pause_toggle():
     # 检查当前状态
     filename, filename_msg = get_mpv_property("filename")
-    pause_state, pause_msg = get_mpv_property("pause")
     idle, idle_msg = get_mpv_property("idle-active")
     
     # 使用全局变量作为后备检查
-    global current_playing_file
+    global current_playing_file, self_recorded_state
+    
+    # 获取自己记录的暂停状态
+    pause_state = self_recorded_state["paused"]
     
     # 改进播放状态判断：
     # 1. 检查filename是否有值
@@ -1309,7 +1311,7 @@ def pause_toggle():
     
     # 详细的调试日志
     operation_logger.debug(f"[播放控制] 原始状态: filename={repr(filename)}, filename_msg={filename_msg}")
-    operation_logger.debug(f"[播放控制] 原始状态: pause_state={pause_state}, pause_msg={pause_msg}")
+    operation_logger.debug(f"[播放控制] 原始状态: pause_state={pause_state} (自己记录的状态)")
     operation_logger.debug(f"[播放控制] 原始状态: idle={idle}, idle_msg={idle_msg}")
     operation_logger.debug(f"[播放控制] 原始状态: path={repr(path)}, path_msg={path_msg}")
     operation_logger.debug(f"[播放控制] 原始状态: current_playing_file={repr(current_playing_file)}")
@@ -1348,7 +1350,7 @@ def pause_toggle():
     # 2. 如果没有播放文件，切换状态后播放下一首
     operation_logger.info("[播放控制] 切换播放/暂停状态")
     # 发送遮罩提醒
-    new_state = "暂停" if pause_state else "播放"
+    new_state = "暂停" if not pause_state else "播放"
     send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
     success, message = send_mpv_command(["cycle", "pause"])
     if success:

@@ -911,6 +911,77 @@ def auto_cache_worker():
             time.sleep(600)  # 出错后也等待10分钟
 
 
+def fade_in(duration=3.0, target_volume=100):
+    """音量淡入效果
+    
+    Args:
+        duration: 淡入持续时间（秒），默认3秒
+        target_volume: 目标音量（0-100），默认100
+    """
+    try:
+        app.logger.info(f"[FADE_IN] 开始淡入效果，持续时间: {duration}秒，目标音量: {target_volume}")
+        
+        # 设置初始音量为0
+        send_mpv_command(["set", "volume", "0"])
+        
+        # 计算步进参数
+        steps = 30  # 总步数
+        step_duration = duration / steps  # 每步的时间间隔
+        volume_step = target_volume / steps  # 每步的音量增量
+        
+        # 逐步增加音量
+        for i in range(steps + 1):
+            current_volume = int(volume_step * i)
+            send_mpv_command(["set", "volume", str(current_volume)])
+            
+            # 更新自己记录的状态
+            global self_recorded_state
+            self_recorded_state["volume"] = current_volume
+            
+            if i < steps:
+                time.sleep(step_duration)
+        
+        app.logger.info(f"[FADE_IN] 淡入效果完成，当前音量: {target_volume}")
+    except Exception as e:
+        app.logger.error(f"[FADE_IN] 淡入效果失败: {str(e)}", exc_info=True)
+
+
+def fade_out(duration=2.0):
+    """音量淡出效果
+    
+    Args:
+        duration: 淡出持续时间（秒），默认2秒
+    """
+    try:
+        # 获取当前音量
+        current_volume, _ = get_mpv_property("volume")
+        if current_volume is None:
+            current_volume = 100
+        
+        app.logger.info(f"[FADE_OUT] 开始淡出效果，持续时间: {duration}秒，起始音量: {current_volume}")
+        
+        # 计算步进参数
+        steps = 20  # 总步数
+        step_duration = duration / steps  # 每步的时间间隔
+        volume_step = current_volume / steps  # 每步的音量减量
+        
+        # 逐步降低音量
+        for i in range(steps + 1):
+            new_volume = int(current_volume - (volume_step * i))
+            send_mpv_command(["set", "volume", str(new_volume)])
+            
+            # 更新自己记录的状态
+            global self_recorded_state
+            self_recorded_state["volume"] = new_volume
+            
+            if i < steps:
+                time.sleep(step_duration)
+        
+        app.logger.info(f"[FADE_OUT] 淡出效果完成，当前音量: 0")
+    except Exception as e:
+        app.logger.error(f"[FADE_OUT] 淡出效果失败: {str(e)}", exc_info=True)
+
+
 def timer_worker():
     """精确计时线程，每100毫秒更新一次播放位置"""
     global timer_thread_running, self_recorded_state
@@ -1392,6 +1463,9 @@ def next_track():
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
+            # 确保播放状态（即使之前是暂停状态也要开始播放）
+            send_mpv_command(["set", "pause", "no"])
+            
             # 启动渐入效果线程
             fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
             fade_in_thread.start()

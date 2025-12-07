@@ -1153,7 +1153,30 @@ def playback_monitor_worker():
                     end_reason = "eof-reached属性检测到播放结束"
                 else:
                     end_reason = "idle-active属性检测到播放结束"
-            elif current_duration > 0:
+            
+            # 检查静音检测
+            try:
+                # 获取音频过滤器元数据
+                af_metadata, _ = get_mpv_property("af-metadata")
+                if af_metadata and isinstance(af_metadata, dict):
+                    # 检查是否有静音检测信息
+                    # silencedetect output format: lavfi.silencedetect.silence_start
+                    silence_start = af_metadata.get("lavfi.silencedetect.silence_start")
+                    
+                    if silence_start:
+                        app.logger.info(f"[PLAYBACK_MONITOR] 检测到静音，开始时间: {silence_start}")
+                        # 只要检测到静音，就认为播放结束（前提是已经播放了一段时间，比如超过5秒）
+                        # 避免开始时的短暂静音导致误判
+                        if current_position > 5:
+                            playback_ended = True
+                            end_reason = f"检测到静音结束 (start: {silence_start})"
+                            
+                            # 发送遮罩提醒
+                            send_mask_reminder("检测到静音，切换下一首", "silence_skip")
+            except Exception as e:
+                app.logger.debug(f"[PLAYBACK_MONITOR] 检查静音状态失败: {e}")
+
+            if not playback_ended and current_duration > 0:
                 # 检查进度是否接近100%
                 if current_progress >= 99.9:
                     # 进度接近100%，确保显示为100%
@@ -1463,12 +1486,37 @@ def next_track():
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
         if success:
-            # 确保播放状态（即使之前是暂停状态也要开始播放）
+            # 确保播放状态 - 强制取消暂停
+            # 为确保万无一失，发送两次解除暂停命令，一次使用字符串，一次使用布尔值(如果MPV支持)
             send_mpv_command(["set", "pause", "no"])
+            time.sleep(0.1)
+            send_mpv_command(["set", "pause", False])
+            
+            # double check: 再次确认状态，如果还是暂停则强制播放
+            is_paused, _ = get_mpv_property("pause")
+            if is_paused:
+                app.logger.info("检测到仍处于暂停状态，再次强制解除暂停")
+                send_mpv_command(["set", "pause", "no"])
             
             # 启动渐入效果线程
             fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
             fade_in_thread.start()
+            
+            # 获取并更新文件时长
+            try:
+                # 优先使用ffprobe获取准确时长
+                duration = get_file_duration(local_path)
+                if duration <= 0:
+                    # 如果ffprobe失败，尝试从MPV获取
+                    duration, _ = get_mpv_property("duration")
+                    if duration is None:
+                        duration = 0
+                
+                # 更新状态
+                self_recorded_state["duration"] = float(duration)
+                app.logger.info(f"已更新文件时长: {duration}秒")
+            except Exception as e:
+                app.logger.error(f"更新文件时长失败: {e}")
             
             # 记录到时间轴
             add_to_timeline(
@@ -1507,9 +1555,11 @@ def next_track():
                 "--input-ipc-server=/data/data/com.termux/files/usr/tmp/mpv_ctrl/socket",
                 "--cache=yes",
                 "--cache-secs=60",
+                "--pause=no",   # 强制不暂停
                 "--idle=yes",  # 保持mpv运行状态
                 "--force-window=no",  # 不强制创建窗口
                 "--really-quiet",  # 减少输出噪音
+                "--af=silencedetect=noise=-30dB:d=3.5", # 添加静音检测滤镜: -30dB, 3.5秒
                 local_path
             ])
             
@@ -1517,6 +1567,26 @@ def next_track():
             def delayed_fade_in():
                 time.sleep(1.0)  # 等待MPV启动
                 fade_in(3.0)
+                
+                # 在MPV启动后更新文件时长
+                try:
+                    # 优先使用ffprobe获取准确时长
+                    duration = get_file_duration(local_path)
+                    if duration <= 0:
+                        # 如果ffprobe失败，尝试从MPV获取（可能需要重试几次）
+                        for _ in range(3):
+                            time.sleep(0.5)
+                            duration, _ = get_mpv_property("duration")
+                            if duration and duration > 0:
+                                break
+                        if duration is None:
+                            duration = 0
+                    
+                    # 更新状态
+                    self_recorded_state["duration"] = float(duration)
+                    app.logger.info(f"已更新文件时长(重启模式): {duration}秒")
+                except Exception as e:
+                    app.logger.error(f"更新文件时长失败(重启模式): {e}")
             
             fade_in_thread = threading.Thread(target=delayed_fade_in, daemon=True)
             fade_in_thread.start()
@@ -1924,6 +1994,22 @@ def play_file(filename):
         # 启动渐入效果线程
         fade_in_thread = threading.Thread(target=fade_in, args=(3.0,), daemon=True)
         fade_in_thread.start()
+
+        # 获取并更新文件时长
+        try:
+            # 优先使用ffprobe获取准确时长
+            duration = get_file_duration(local_path)
+            if duration <= 0:
+                # 如果ffprobe失败，尝试从MPV获取
+                duration, _ = get_mpv_property("duration")
+                if duration is None:
+                    duration = 0
+            
+            # 更新状态
+            self_recorded_state["duration"] = float(duration)
+            app.logger.info(f"已更新文件时长: {duration}秒")
+        except Exception as e:
+            app.logger.error(f"更新文件时长失败: {e}")
         
         # 发送遮罩提醒
         send_mask_reminder(f"成功播放文件: {filename}", "play_file_success")
@@ -1957,6 +2043,7 @@ def play_file(filename):
             "--idle=yes",  # 保持mpv运行状态
             "--force-window=no",  # 不强制创建窗口
             "--really-quiet",  # 减少输出噪音
+            "--af=silencedetect=noise=-30dB:d=2.5", # 添加静音检测滤镜: -30dB, 2.5秒
             local_path
         ])
         
@@ -1969,6 +2056,26 @@ def play_file(filename):
         def delayed_fade_in():
             time.sleep(1.0)  # 等待MPV启动
             fade_in(3.0)
+            
+            # 在MPV启动后更新文件时长
+            try:
+                # 优先使用ffprobe获取准确时长
+                duration = get_file_duration(local_path)
+                if duration <= 0:
+                    # 如果ffprobe失败，尝试从MPV获取（可能需要重试几次）
+                    for _ in range(3):
+                        time.sleep(0.5)
+                        duration, _ = get_mpv_property("duration")
+                        if duration and duration > 0:
+                            break
+                    if duration is None:
+                        duration = 0
+                
+                # 更新状态
+                self_recorded_state["duration"] = float(duration)
+                app.logger.info(f"已更新文件时长(重启模式): {duration}秒")
+            except Exception as e:
+                app.logger.error(f"更新文件时长失败(重启模式): {e}")
         
         fade_in_thread = threading.Thread(target=delayed_fade_in, daemon=True)
         fade_in_thread.start()

@@ -1146,12 +1146,13 @@ def playback_monitor_worker():
                 # 批量获取关键属性，减少socket连接次数
                 
                 # 1. 播放状态
-                paused, _ = get_mpv_property("pause")
+                paused, error_msg = get_mpv_property("pause")
                 
                 # 2. 更新状态
                 with state_lock:
-                    # 只有当暂停状态发生变化时，才更新状态
-                    if paused is not None and paused != self_recorded_state["paused"]:
+                    # 只有当pause属性获取成功且状态发生变化时，才更新状态
+                    # 避免在get_mpv_property返回默认值False时错误更新状态
+                    if paused is not None and error_msg == "Success" and paused != self_recorded_state["paused"]:
                         self_recorded_state["paused"] = paused
                         self_recorded_state["playing"] = not paused
                 
@@ -1467,13 +1468,16 @@ def pause_toggle():
     # 使用全局变量
     global self_recorded_state, current_playing_file
     
-    # 从MPV获取当前的暂停状态，使用这个状态作为基准
-    # 不再从自己记录的状态中获取，因为自己记录的状态可能与MPV的实际状态不一致
-    actual_paused, _ = get_mpv_property("pause")
-    
-    # 从自己记录的状态中获取其他信息，使用state_lock保护
+    # 从自己记录的状态中获取当前状态，作为基准
     with state_lock:
+        actual_paused = self_recorded_state["paused"]
         current_file = self_recorded_state["current_file"]
+    
+    # 尝试从MPV获取当前的暂停状态，如果获取成功则使用这个状态
+    # 只有当获取成功时才使用MPV的状态，否则继续使用自己记录的状态
+    mpv_paused, error_msg = get_mpv_property("pause")
+    if mpv_paused is not None and error_msg == "Success":
+        actual_paused = mpv_paused
     
     # 改进播放状态判断：
     # 1. 自己记录的状态中有文件名
@@ -1512,14 +1516,16 @@ def pause_toggle():
         # 获取当前播放文件信息
         current_file_info = current_file or current_playing_file or "未知文件"
         
-        # 发送命令后，再次从MPV获取最新的暂停状态
-        # 因为"cycle pause"命令会切换MPV的暂停状态
-        after_pause, _ = get_mpv_property("pause")
-        
-        # 更新自己记录的状态，使用从MPV获取的实际状态
+        # 发送命令后，直接切换我们自己记录的状态
+        # 不再依赖于从MPV获取的状态，因为get_mpv_property函数在遇到错误时会返回默认值False
+        # 而我们已经成功发送了暂停命令，所以可以确定状态已经切换
         with state_lock:
-            self_recorded_state["paused"] = after_pause
-            self_recorded_state["playing"] = not after_pause  # playing状态应该是paused的反义词
+            # 切换暂停状态
+            self_recorded_state["paused"] = not self_recorded_state["paused"]
+            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
+            
+            # 获取切换后的状态
+            after_pause = self_recorded_state["paused"]
         
         # 记录到时间轴
         add_to_timeline(

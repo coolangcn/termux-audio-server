@@ -82,11 +82,6 @@ self_recorded_state = {
 timeline_lock = threading.RLock()  # 用于线程安全
 state_lock = threading.RLock()     # 用于播放状态的线程安全
 
-# 时间墙配置
-TIME_WALL_ENABLED = True  # 是否启用时间墙
-TIME_WALL_START_HOUR = 9  # 允许播放的起始小时（东8区）
-TIME_WALL_END_HOUR = 21  # 允许播放的结束小时（东8区，不包含该小时）
-
 # 计时线程控制变量
 timer_thread_running = False  # 计时线程是否正在运行
 timer_thread = None  # 计时线程对象
@@ -1038,39 +1033,6 @@ def fade_out(duration=2.0):
         app.logger.error(f"[FADE_OUT] 淡出效果失败: {str(e)}", exc_info=True)
 
 
-def check_time_wall():
-    """检查当前时间是否在允许播放的时间段内（东8区时间）
-    
-    Returns:
-        bool: 当前是否允许播放
-    """
-    try:
-        # 如果时间墙未启用，直接允许播放
-        if not TIME_WALL_ENABLED:
-            return True
-        
-        # 获取当前东8区时间（不依赖pytz库）
-        from datetime import datetime, timedelta, timezone
-        
-        # 获取当前UTC时间
-        utc_now = datetime.now(timezone.utc)
-        # 转换为东8区时间（UTC+8）
-        cst_now = utc_now + timedelta(hours=8)
-        
-        # 获取当前小时
-        current_hour = cst_now.hour
-        
-        # 检查是否在允许播放的时间段内
-        if TIME_WALL_START_HOUR <= current_hour < TIME_WALL_END_HOUR:
-            return True
-        else:
-            return False
-    except Exception as e:
-        app.logger.error(f"[TIME_WALL] 检查时间墙时发生错误: {e}")
-        # 发生错误时默认允许播放
-        return True
-
-
 def timer_worker():
     """精确计时线程，每100毫秒更新一次播放位置"""
     global timer_thread_running, self_recorded_state
@@ -1555,11 +1517,6 @@ def pause_toggle():
         
         # 如果没有播放文件，播放下一首
         if not has_playing_file:
-            # 检查时间墙，只有在允许的时间段内才能播放
-            if not check_time_wall():
-                # 发送遮罩提醒
-                send_mask_reminder("当前时间不允许播放，请在早上9点到晚上9点之间播放", "time_wall_restriction")
-                return jsonify({"status": "error", "message": "当前时间不允许播放，请在早上9点到晚上9点之间播放"}), 403
             # 情况1：没有播放文件，触发播放下一首
             operation_logger.info("[播放控制] 没有播放文件，触发播放下一首")
             # 发送遮罩提醒
@@ -1577,12 +1534,6 @@ def pause_toggle():
 @log_operation("下一首")
 def next_track():
     try:
-        # 检查时间墙
-        if not check_time_wall():
-            # 发送遮罩提醒
-            send_mask_reminder("当前时间不允许播放，请在早上9点到晚上9点之间播放", "time_wall_restriction")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，请在早上9点到晚上9点之间播放"}), 403
-        
         global current_playing_file, next_playing_file, self_recorded_state
         
         # 发送遮罩提醒
@@ -1784,12 +1735,6 @@ def next_track():
 @log_operation("上一首")
 def prev_track():
     try:
-        # 检查时间墙
-        if not check_time_wall():
-            # 发送遮罩提醒
-            send_mask_reminder("当前时间不允许播放，请在早上9点到晚上9点之间播放", "time_wall_restriction")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，请在早上9点到晚上9点之间播放"}), 403
-        
         global current_playing_file, next_playing_file
         
         # 发送遮罩提醒
@@ -1847,13 +1792,9 @@ def prev_track():
         
         # 更新自己记录的状态
         global self_recorded_state
-        with state_lock:
-            self_recorded_state["playing"] = True
-            self_recorded_state["paused"] = False
-            self_recorded_state["current_file"] = prev_file
-            self_recorded_state["position"] = 0
-            self_recorded_state["progress"] = 0
-            self_recorded_state["last_update_time"] = time.time()
+        self_recorded_state["playing"] = True
+        self_recorded_state["paused"] = False
+        self_recorded_state["current_file"] = prev_file
         
         # 播放上一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])
@@ -1963,13 +1904,9 @@ def stop_playback():
         
         # 更新自己记录的状态
         global self_recorded_state
-        with state_lock:
-            self_recorded_state["playing"] = False
-            self_recorded_state["paused"] = True
-            self_recorded_state["current_file"] = ""
-            self_recorded_state["position"] = 0
-            self_recorded_state["progress"] = 0
-            self_recorded_state["last_update_time"] = time.time()
+        self_recorded_state["playing"] = False
+        self_recorded_state["paused"] = True
+        self_recorded_state["current_file"] = ""
         
         return jsonify({"status": "ok", "action": "stop"}), 200
     # 发送遮罩提醒
@@ -2055,24 +1992,11 @@ def shuffle_playlist():
 @app.route('/mpv/play/<int:index>', methods=['GET'])
 @log_operation("播放指定歌曲")
 def play_track(index):
-    """播放指定歌曲"""
-    # 检查时间墙
-    if not check_time_wall():
-        # 发送遮罩提醒
-        send_mask_reminder("当前时间不允许播放，请在早上9点到晚上9点之间播放", "time_wall_restriction")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，请在早上9点到晚上9点之间播放"}), 403
-    
+    """播放指定索引的歌曲"""
     # 发送遮罩提醒
     send_mask_reminder(f"正在播放播放列表中索引为 {index} 的歌曲", "play_track")
     
     success, message = send_mpv_command(["playlist-play-index", str(index)])
-    if success:
-        # 更新自己记录的状态
-        global self_recorded_state
-        with state_lock:
-            self_recorded_state["playing"] = True
-            self_recorded_state["paused"] = False
-            self_recorded_state["last_update_time"] = time.time()
     if success:
         # 发送遮罩提醒
         send_mask_reminder(f"成功播放播放列表中索引为 {index} 的歌曲", "play_track_success")
@@ -2118,10 +2042,9 @@ def seek():
                 current_progress = 0
             
             # 更新自己记录的状态
-            with state_lock:
-                self_recorded_state["position"] = position_float
-                self_recorded_state["progress"] = current_progress
-                self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
+            self_recorded_state["position"] = position_float
+            self_recorded_state["progress"] = current_progress
+            self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
             
             return jsonify({"status": "ok", "action": "seek", "position": position, "progress": current_progress}), 200
         else:
@@ -2163,12 +2086,6 @@ def fade_in(duration=3.0):
 
 def play_file(filename):
     """播放指定文件（按需从NAS拉取）"""
-    # 检查时间墙
-    if not check_time_wall():
-        # 发送遮罩提醒
-        send_mask_reminder("当前时间不允许播放，请在早上9点到晚上9点之间播放", "time_wall_restriction")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，请在早上9点到晚上9点之间播放"}), 403
-    
     # 声明全局变量
     global current_playing_file, self_recorded_state
     

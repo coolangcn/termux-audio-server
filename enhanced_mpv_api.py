@@ -1147,10 +1147,18 @@ def playback_monitor_worker():
                 
                 # 1. 播放状态
                 paused, _ = get_mpv_property("pause")
-                if paused is not None:
-                    with state_lock:
+                
+                # 2. 当前播放位置
+                time_pos, _ = get_mpv_property("time-pos")
+                
+                # 3. 更新状态
+                with state_lock:
+                    if paused is not None:
                         self_recorded_state["paused"] = paused
                         self_recorded_state["playing"] = not paused
+                    
+                    if time_pos is not None:
+                        self_recorded_state["position"] = float(time_pos)
                 
                 # 2. 音量
                 volume, _ = get_mpv_property("volume")
@@ -1191,6 +1199,13 @@ def playback_monitor_worker():
                     if duration and duration > 0:
                         with state_lock:
                             self_recorded_state["duration"] = float(duration)
+                
+                # 5. 更新进度百分比
+                with state_lock:
+                    current_dur = self_recorded_state["duration"]
+                    current_pos = self_recorded_state["position"]
+                    if current_dur > 0 and current_pos >= 0:
+                        self_recorded_state["progress"] = round((current_pos / current_dur) * 100, 3)
 
                 # 5. 播放列表 (每10秒)
                 if last_status['check_count'] % 20 == 0:
@@ -2324,8 +2339,11 @@ def get_status():
 def get_self_recorded_status():
     """获取自己记录的播放状态"""
     global self_recorded_state
-    app.logger.debug(f"[状态获取] 获取自己记录的状态: {self_recorded_state}")
-    return jsonify(self_recorded_state), 200
+    # 使用state_lock保护状态读取，确保在多线程环境下状态的一致性
+    with state_lock:
+        status = self_recorded_state.copy()
+    app.logger.debug(f"[状态获取] 获取自己记录的状态: {status}")
+    return jsonify(status), 200
 
 
 

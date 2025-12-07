@@ -76,9 +76,11 @@ self_recorded_state = {
     "volume": 100,     # 当前音量
     "position": 0,     # 当前播放位置（秒）
     "duration": 0,     # 总时长（秒）
-    "progress": 0      # 播放进度百分比
+    "progress": 0,     # 播放进度百分比
+    "last_update_time": 0 # 最后更新时间
 }
 timeline_lock = threading.RLock()  # 用于线程安全
+state_lock = threading.RLock()     # 用于播放状态的线程安全
 
 # 计时线程控制变量
 timer_thread_running = False  # 计时线程是否正在运行
@@ -989,36 +991,47 @@ def timer_worker():
     
     # 计时精度（秒）
     timer_precision = 0.1  # 100毫秒
+    last_time = time.time()
     
     while timer_thread_running:
         try:
-            # 检查播放状态
-            is_playing = self_recorded_state["playing"]
-            is_paused = self_recorded_state["paused"]
-            current_position = self_recorded_state["position"]
-            current_duration = self_recorded_state["duration"]
+            current_time = time.time()
+            # 计算两次循环之间的时间差
+            delta = current_time - last_time
+            last_time = current_time
             
-            # 只有当正在播放且未暂停时，才更新播放位置
-            if is_playing and not is_paused:
-                # 增加播放位置（100毫秒）
-                new_position = current_position + timer_precision
+            # 防止delta过大（例如线程暂停过久）
+            if delta > 1.0:
+                delta = 1.0
+            
+            # 检查播放状态
+            with state_lock:
+                is_playing = self_recorded_state["playing"]
+                is_paused = self_recorded_state["paused"]
+                current_position = self_recorded_state["position"]
+                current_duration = self_recorded_state["duration"]
                 
-                # 检查是否达到文件时长
-                if current_duration > 0 and new_position >= current_duration:
-                    # 达到文件时长，重置播放位置
-                    new_position = 0
-                    # 更新播放状态
-                    self_recorded_state["position"] = new_position
-                    self_recorded_state["progress"] = 0
-                    app.logger.info(f"[TIMER_WORKER] 播放结束，重置播放位置到 0")
-                else:
-                    # 更新播放位置
-                    self_recorded_state["position"] = new_position
+                # 只有当正在播放且未暂停时，才更新播放位置
+                if is_playing and not is_paused:
+                    # 增加播放位置（基于实际流逝的时间）
+                    new_position = current_position + delta
                     
-                    # 计算并更新播放进度百分比
-                    if current_duration > 0:
-                        new_progress = (new_position / current_duration) * 100
-                        self_recorded_state["progress"] = round(new_progress, 3)
+                    # 检查是否达到文件时长
+                    if current_duration > 0 and new_position >= current_duration:
+                        # 达到文件时长，不再增加，也不重置，等待监控线程处理切换
+                        new_position = current_duration
+                        
+                        # 更新播放状态
+                        self_recorded_state["position"] = new_position
+                        self_recorded_state["progress"] = 100.0
+                    else:
+                        # 更新播放位置
+                        self_recorded_state["position"] = new_position
+                        
+                        # 计算并更新播放进度百分比
+                        if current_duration > 0:
+                            new_progress = (new_position / current_duration) * 100
+                            self_recorded_state["progress"] = round(new_progress, 3)
             
             # 等待100毫秒
             time.sleep(timer_precision)
@@ -1026,6 +1039,8 @@ def timer_worker():
             app.logger.error(f"[TIMER_WORKER] 计时线程出错: {str(e)}", exc_info=True)
             # 出错后继续执行，避免线程退出
             time.sleep(timer_precision)
+            # 更新时间，避免出错后delta过大
+            last_time = time.time()
     
     app.logger.info("[TIMER_WORKER] 精确计时线程已停止")
 
@@ -1096,11 +1111,12 @@ def playback_monitor_worker():
                 # 计时由专门的timer_worker线程处理，这里不需要更新位置
             
             # 获取自己记录的状态
-            current_progress = self_recorded_state["progress"]
-            is_paused = self_recorded_state["paused"]
-            is_playing = self_recorded_state["playing"]
-            current_position = self_recorded_state["position"]
-            current_duration = self_recorded_state["duration"]
+            with state_lock:
+                current_progress = self_recorded_state["progress"]
+                is_paused = self_recorded_state["paused"]
+                is_playing = self_recorded_state["playing"]
+                current_position = self_recorded_state["position"]
+                current_duration = self_recorded_state["duration"]
             
             app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}, 时长: {current_duration}秒")
             
@@ -1144,9 +1160,10 @@ def playback_monitor_worker():
                 # 播放结束，确保进度显示为100%
                 current_progress = 100.0
                 current_position = current_duration
-                self_recorded_state["progress"] = current_progress
-                self_recorded_state["position"] = current_position
-                self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
+                with state_lock:
+                    self_recorded_state["progress"] = current_progress
+                    self_recorded_state["position"] = current_position
+                    self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
                 
                 playback_ended = True
                 if eof_reached:
@@ -1215,10 +1232,11 @@ def playback_monitor_worker():
                     last_status['time_pos'] = 0
                     last_status['time_pos_stable_count'] = 0
                     # 重置自己记录的状态，确保下一首从0开始
-                    self_recorded_state["position"] = 0
-                    self_recorded_state["duration"] = 0
-                    self_recorded_state["progress"] = 0
-                    self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
+                    with state_lock:
+                        self_recorded_state["position"] = 0
+                        self_recorded_state["duration"] = 0
+                        self_recorded_state["progress"] = 0
+                        self_recorded_state["last_update_time"] = time.time()  # 更新最后更新时间
             
             # 更新状态跟踪
             last_status['progress'] = current_progress
@@ -1392,8 +1410,9 @@ def pause_toggle():
             {"current_file": current_file_info, "pause_state": not is_paused}
         )
         # 更新自己记录的状态
-        self_recorded_state["paused"] = not is_paused
-        self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
+        with state_lock:
+            self_recorded_state["paused"] = not is_paused
+            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
         app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         
         # 如果没有播放文件，播放下一首
@@ -1479,9 +1498,10 @@ def next_track():
         next_playing_file = next_file
         
         # 更新自己记录的状态
-        self_recorded_state["playing"] = True
-        self_recorded_state["paused"] = False
-        self_recorded_state["current_file"] = next_file
+        with state_lock:
+            self_recorded_state["playing"] = True
+            self_recorded_state["paused"] = False
+            self_recorded_state["current_file"] = next_file
         
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])

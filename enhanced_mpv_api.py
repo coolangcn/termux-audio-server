@@ -2190,6 +2190,8 @@ def seek():
         send_mask_reminder(f"播放进度调整失败: {str(e)}", "seek_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+@app.route('/mpv/play/file/<path:filename>', methods=['GET'])
+@log_operation("播放指定文件")
 def fade_in(duration=3.0):
     """实现音量渐入效果
     
@@ -2355,12 +2357,6 @@ def play_file(filename):
         }), 200
     except Exception as e:
         return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
-
-@app.route('/mpv/play/file/<path:filename>', methods=['GET'])
-@log_operation("播放指定文件")
-def play_file_route(filename):
-    """播放指定文件的路由处理函数"""
-    return play_file(filename)
 
 @app.route('/mpv/build_playlist', methods=['POST'])
 @log_operation("构建播放列表")

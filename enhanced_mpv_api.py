@@ -97,6 +97,8 @@ operation_logger.setLevel(logging.DEBUG)
 # 时间墙配置 - 支持通过环境变量配置
 # 默认播放时间段：早上9点到晚上9点（东八区）
 # 环境变量格式：PLAY_START_HOUR=9，PLAY_END_HOUR=21
+# 是否启用时间墙功能：PLAY_WALL_ENABLED=true/false
+PLAY_WALL_ENABLED = os.environ.get('PLAY_WALL_ENABLED', 'true').lower() == 'true'
 PLAY_START_HOUR = int(os.environ.get('PLAY_START_HOUR', 9))
 PLAY_END_HOUR = int(os.environ.get('PLAY_END_HOUR', 21))
 
@@ -110,6 +112,7 @@ if PLAY_END_HOUR < 0 or PLAY_END_HOUR > 23:
     operation_logger.warning(f"[时间墙] 无效的结束时间配置: {PLAY_END_HOUR}，已重置为默认值21")
 
 operation_logger.debug(f"[时间墙] 配置的播放时间段: {PLAY_START_HOUR}点到{PLAY_END_HOUR}点")
+operation_logger.debug(f"[时间墙] 时间墙功能是否启用: {PLAY_WALL_ENABLED}")
 
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
@@ -239,8 +242,13 @@ def is_playback_allowed():
     import datetime
     from pytz import timezone
     
-    # 使用全局配置的播放时间段
-    global PLAY_START_HOUR, PLAY_END_HOUR
+    # 使用全局配置
+    global PLAY_WALL_ENABLED, PLAY_START_HOUR, PLAY_END_HOUR
+    
+    # 如果时间墙功能未启用，直接允许播放
+    if not PLAY_WALL_ENABLED:
+        operation_logger.debug(f"[时间墙] 时间墙功能未启用，允许播放")
+        return True
     
     # 设置东八区时区
     tz = timezone('Asia/Shanghai')
@@ -1519,7 +1527,8 @@ def pause_toggle():
     if not is_playback_allowed():
         # 发送遮罩提醒
         send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
     
     # 从自己记录的状态中获取当前状态，作为基准
     with state_lock:
@@ -1614,7 +1623,8 @@ def next_track():
         if not is_playback_allowed():
             # 发送遮罩提醒
             send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+            # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
         
         global current_playing_file, next_playing_file, self_recorded_state
         
@@ -1821,7 +1831,8 @@ def prev_track():
         if not is_playback_allowed():
             # 发送遮罩提醒
             send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+            # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
         
         global current_playing_file, next_playing_file
         
@@ -1971,7 +1982,8 @@ def stop_playback():
     if not is_playback_allowed():
         # 发送遮罩提醒
         send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
     
     global current_playing_file
     
@@ -2042,7 +2054,8 @@ def set_volume():
         if not is_playback_allowed():
             # 发送遮罩提醒
             send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+            # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
         
         value = int(request.args.get('value', 50))
         value = max(0, min(100, value))  # 限制在0-100之间
@@ -2073,7 +2086,8 @@ def shuffle_playlist():
     if not is_playback_allowed():
         # 发送遮罩提醒
         send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
     
     # 发送遮罩提醒
     send_mask_reminder("正在随机打乱播放列表", "shuffle_playlist")
@@ -2103,7 +2117,8 @@ def play_track(index):
     if not is_playback_allowed():
         # 发送遮罩提醒
         send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
     
     # 发送遮罩提醒
     send_mask_reminder(f"正在播放播放列表中索引为 {index} 的歌曲", "play_track")
@@ -2126,7 +2141,8 @@ def seek():
         if not is_playback_allowed():
             # 发送遮罩提醒
             send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+            # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
         
         position = request.args.get('position')
         if not position:
@@ -2206,7 +2222,8 @@ def play_file(filename):
     if not is_playback_allowed():
         # 发送遮罩提醒
         send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
     
     # 声明全局变量
     global current_playing_file, self_recorded_state
@@ -2354,7 +2371,8 @@ def build_playlist():
         if not is_playback_allowed():
             # 发送遮罩提醒
             send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
-            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+            # 返回200状态码，但status为error，这样客户端JavaScript代码会显示自定义错误信息，而不是抛出网络错误
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 200
         
         # 发送遮罩提醒
         send_mask_reminder("正在构建播放列表", "build_playlist")

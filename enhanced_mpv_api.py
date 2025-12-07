@@ -322,25 +322,74 @@ def get_file_duration(file_path):
             operation_logger.debug(f"[文件时长] 文件不存在: {file_path}")
             return 0
         
-        # 尝试使用ffprobe获取时长
         import subprocess
-        cmd = [
-            'ffprobe',
-            '-v', 'error',
-            '-show_entries', 'format=duration',
-            '-of', 'default=noprint_wrappers=1:nokey=1',
-            file_path
-        ]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-        if result.returncode == 0 and result.stdout.strip():
-            duration = float(result.stdout.strip())
-            operation_logger.debug(f"[文件时长] 使用ffprobe获取到时长: {duration}秒")
-            return duration
         
-        operation_logger.debug(f"[文件时长] 无法获取文件时长: {file_path}")
+        # 方法1: 尝试使用ffprobe获取format时长
+        try:
+            cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-show_entries', 'format=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                file_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if output and output != "N/A":
+                    try:
+                        duration = float(output)
+                        operation_logger.debug(f"[文件时长] 使用ffprobe(format)获取到时长: {duration}秒")
+                        return duration
+                    except ValueError:
+                        pass
+        except Exception as e:
+            operation_logger.debug(f"[文件时长] ffprobe(format)尝试失败: {e}")
+
+        # 方法2: 尝试使用ffprobe获取流(stream)时长
+        try:
+            cmd = [
+                'ffprobe',
+                '-v', 'error',
+                '-select_streams', 'a:0',
+                '-show_entries', 'stream=duration',
+                '-of', 'default=noprint_wrappers=1:nokey=1',
+                file_path
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if result.returncode == 0:
+                output = result.stdout.strip()
+                if output and output != "N/A":
+                    try:
+                        duration = float(output)
+                        operation_logger.debug(f"[文件时长] 使用ffprobe(stream)获取到时长: {duration}秒")
+                        return duration
+                    except ValueError:
+                        pass
+        except Exception as e:
+            operation_logger.debug(f"[文件时长] ffprobe(stream)尝试失败: {e}")
+
+        # 方法3: 尝试从ffmpeg输出中解析时长
+        try:
+            cmd = ['ffmpeg', '-i', file_path]
+            # ffmpeg -i 总是返回非0，因为它没有输出文件，错误输出在stderr
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            output = result.stderr
+            import re
+            # 寻找 "Duration: 00:00:00.00" 格式
+            match = re.search(r"Duration: (\d{2}):(\d{2}):(\d{2}\.\d+)", output)
+            if match:
+                hours, minutes, seconds = map(float, match.groups())
+                duration = hours * 3600 + minutes * 60 + seconds
+                operation_logger.debug(f"[文件时长] 使用ffmpeg解析获取到时长: {duration}秒")
+                return duration
+        except Exception as e:
+            operation_logger.debug(f"[文件时长] ffmpeg解析尝试失败: {e}")
+            
+        operation_logger.warning(f"[文件时长] 所有方法均无法获取文件时长: {file_path}")
         return 0
     except Exception as e:
-        operation_logger.debug(f"[文件时长] 获取文件时长异常: {e}")
+        operation_logger.error(f"[文件时长] 获取文件时长发生未预期异常: {e}", exc_info=True)
         return 0
 
 def get_mpv_property(property_name):

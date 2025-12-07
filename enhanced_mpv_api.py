@@ -1001,8 +1001,8 @@ def timer_worker():
             last_time = current_time
             
             # 防止delta过大（例如线程暂停过久）
-            if delta > 1.0:
-                delta = 1.0
+            if delta > 5.0:
+                delta = 5.0
             
             # 检查播放状态
             with state_lock:
@@ -1148,6 +1148,17 @@ def playback_monitor_worker():
                     playlist, _ = get_mpv_property("playlist")
                     with state_lock:
                         self_recorded_state["playlist"] = playlist if playlist else []
+                
+                # 6. 主动同步播放位置 (每2秒，修正漂移)
+                if last_status['check_count'] % 4 == 0:
+                    time_pos, _ = get_mpv_property("time-pos")
+                    if time_pos is not None and time_pos > 0:
+                        with state_lock:
+                            # 只有偏差超过1秒时才修正，避免抖动
+                            current_rec_pos = self_recorded_state["position"]
+                            if abs(time_pos - current_rec_pos) > 1.0:
+                                app.logger.debug(f"[PLAYBACK_MONITOR] 修正位置漂移: {current_rec_pos} -> {time_pos}")
+                                self_recorded_state["position"] = time_pos
                 # ---------------------------
 
                 # 获取 eof-reached 状态 (是否播放结束)

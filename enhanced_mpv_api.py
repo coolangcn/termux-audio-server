@@ -2625,19 +2625,50 @@ def cache_file():
         send_mask_reminder(f"缓存文件时出错: {str(e)}", "cache_file_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
+def tail_file(filename, n=100, block_size=4096):
+    """读取文件最后n行"""
+    try:
+        if not os.path.exists(filename):
+            return []
+            
+        with open(filename, 'rb') as f:
+            f.seek(0, 2)
+            file_size = f.tell()
+            if file_size == 0:
+                return []
+            
+            lines_to_find = n + 1
+            block_end_byte = file_size
+            blocks = []
+            
+            while block_end_byte > 0 and lines_to_find > 0:
+                if block_end_byte - block_size > 0:
+                    f.seek(block_end_byte - block_size)
+                    data = f.read(block_size)
+                else:
+                    f.seek(0)
+                    data = f.read(block_end_byte)
+                
+                lines_found = data.count(b'\n')
+                lines_to_find -= lines_found
+                blocks.append(data)
+                block_end_byte -= block_size
+            
+            text = b''.join(reversed(blocks)).decode('utf-8', errors='replace')
+            return text.splitlines()[-n:]
+    except Exception as e:
+        app.logger.error(f"Tail file error: {e}")
+        return []
+
 @app.route('/logs', methods=['GET'])
 @log_operation("获取操作日志")
 def get_logs():
     """获取操作日志"""
     try:
         log_file = f"{LOG_DIR}/operations.log"
-        if os.path.exists(log_file):
-            with open(log_file, "r") as f:
-                lines = f.readlines()
-                # 返回最后100行日志
-                return jsonify({"logs": lines[-100:] if len(lines) > 100 else lines}), 200
-        else:
-            return jsonify({"logs": []}), 200
+        # 使用tail_file优化的读取方式
+        logs = tail_file(log_file, 100)
+        return jsonify({"logs": logs}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

@@ -1502,6 +1502,9 @@ def next_track():
             self_recorded_state["playing"] = True
             self_recorded_state["paused"] = False
             self_recorded_state["current_file"] = next_file
+            self_recorded_state["position"] = 0
+            self_recorded_state["progress"] = 0
+            self_recorded_state["last_update_time"] = time.time()
         
         # 播放下一首歌曲
         success, message = send_mpv_command(["loadfile", local_path, "replace"])

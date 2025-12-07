@@ -1510,8 +1510,15 @@ def pause_toggle():
         # 获取当前播放文件信息
         current_file_info = current_file or current_playing_file or "未知文件"
         
-        # 从MPV获取最新的暂停状态，确保状态的一致性
-        actual_paused, _ = get_mpv_property("pause")
+        # 直接基于我们自己记录的状态来切换，而不是依赖于从MPV获取的状态
+        # 因为get_mpv_property函数在遇到错误时会返回默认值False，这可能导致状态更新错误
+        with state_lock:
+            # 切换暂停状态
+            self_recorded_state["paused"] = not self_recorded_state["paused"]
+            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
+            
+            # 获取切换后的状态
+            actual_paused = self_recorded_state["paused"]
         
         # 记录到时间轴
         add_to_timeline(
@@ -1519,15 +1526,6 @@ def pause_toggle():
             "播放/暂停切换", 
             {"current_file": current_file_info, "pause_state": actual_paused}
         )
-        # 更新自己记录的状态，使用从MPV获取的实际状态
-        with state_lock:
-            if actual_paused is not None:
-                self_recorded_state["paused"] = actual_paused
-                self_recorded_state["playing"] = not actual_paused  # playing状态应该是paused的反义词
-            else:
-                # 如果获取失败，才使用基于之前状态的切换
-                self_recorded_state["paused"] = not self_recorded_state["paused"]
-                self_recorded_state["playing"] = not self_recorded_state["paused"]
         app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         
         # 如果没有播放文件，播放下一首

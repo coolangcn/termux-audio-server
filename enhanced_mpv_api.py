@@ -1093,16 +1093,67 @@ def playback_monitor_worker():
             
             # 定期获取并更新状态，确保自己记录的状态是最新的
             try:
-                # 不再从MPV获取属性，完全依赖自己记录的状态
-                # 获取 eof-reached 状态 (是否播放结束) - 仅用于检测播放结束
+                # --- 主动同步MPV状态到缓存 ---
+                # 批量获取关键属性，减少socket连接次数
+                
+                # 1. 播放状态
+                paused, _ = get_mpv_property("pause")
+                if paused is not None:
+                    with state_lock:
+                        self_recorded_state["paused"] = paused
+                        self_recorded_state["playing"] = not paused
+                
+                # 2. 音量
+                volume, _ = get_mpv_property("volume")
+                if volume is not None:
+                    with state_lock:
+                        self_recorded_state["volume"] = volume
+                
+                # 3. 文件名和路径
+                filename_mpv, _ = get_mpv_property("filename") 
+                if filename_mpv:
+                     # 确保filename是字符串
+                    filename_mpv = str(filename_mpv)
+                    if filename_mpv != self_recorded_state["current_file"]:
+                         with state_lock:
+                            self_recorded_state["current_file"] = filename_mpv
+                            
+                         # 更新全局变量
+                         current_playing_file = filename_mpv
+                         if filename_mpv != last_status['playing_file']:
+                             app.logger.info(f"[PLAYBACK_MONITOR] 播放文件变更(MPV Sync): {last_status['playing_file']} -> {filename_mpv}")
+                             last_status['playing_file'] = filename_mpv
+                             last_status['progress'] = 0
+                             last_status['time_pos'] = 0
+                             last_status['time_pos_stable_count'] = 0
+                             last_status['reminder_sent'] = False
+                             
+                             # 记录到时间轴
+                             add_to_timeline("play", f"开始播放: {filename_mpv}", {"current_file": filename_mpv})
+
+                # 4. 时长 check
+                if 'check_count' not in last_status:
+                    last_status['check_count'] = 0
+                last_status['check_count'] += 1
+                
+                current_dur = self_recorded_state["duration"]
+                if current_dur <= 0 or last_status['check_count'] % 20 == 0: # 每10秒
+                    duration, _ = get_mpv_property("duration")
+                    if duration and duration > 0:
+                        with state_lock:
+                            self_recorded_state["duration"] = float(duration)
+
+                # 5. 播放列表 (每10秒)
+                if last_status['check_count'] % 20 == 0:
+                    playlist, _ = get_mpv_property("playlist")
+                    with state_lock:
+                        self_recorded_state["playlist"] = playlist if playlist else []
+                # ---------------------------
+
+                # 获取 eof-reached 状态 (是否播放结束)
                 eof_reached, _ = get_mpv_property("eof-reached")
-                idle_active = False  # 不再从MPV获取idle-active状态，默认设为False
+                idle_active = False 
                 
-                # 不再重试获取MPV属性，完全依赖自己记录的状态
-                # 计时由专门的timer_worker线程处理
-                
-                # 不再从MPV获取状态，完全依赖自己记录的状态
-                # 计时由专门的timer_worker线程处理
             except Exception as e:
                 app.logger.debug(f"[PLAYBACK_MONITOR] 更新状态时出错: {str(e)}")
                 # 继续执行，使用默认值
@@ -2170,345 +2221,40 @@ def build_playlist():
 @app.route('/mpv/status', methods=['GET'])
 @log_operation("获取播放状态")
 def get_status():
-    """获取播放状态"""
+    """获取播放状态 (优化版: 仅从缓存读取)"""
     status = {}
-    global current_playing_file, self_recorded_state
     
-    app.logger.debug("[状态获取] 开始获取MPV播放状态")
-    
-    try:
-        # 不再从MPV获取状态，完全依赖自己记录的状态
-        # 优先使用自己记录的状态
+    # 完全依赖自己记录的状态
+    with state_lock:
         status.update(self_recorded_state)
-        
-        # 获取 eof-reached 状态 (是否播放结束) - 仅用于检测播放结束
-        eof_reached, _ = get_mpv_property("eof-reached")
-        
-        # 添加额外的状态信息
-        status["idle_active"] = False  # 不再从MPV获取idle-active状态，默认设为False
-        status["eof_reached"] = eof_reached if eof_reached is not None else False
-        
-        # 获取当前播放文件 - 尝试多种属性
-        app.logger.debug("[状态获取] 尝试获取filename属性")
-        filename, filename_msg = get_mpv_property("filename")
-        app.logger.debug(f"[状态获取] 获取filename属性结果: {filename}, 消息: {filename_msg}")
-        
-        # 确保filename是字符串类型
-        if filename is None:
-            filename = ""
-            app.logger.debug("[状态获取] filename为None，设置为空字符串")
-        
-        # 如果MPV返回了文件名，更新自己记录的状态
-        if filename and filename.strip():
-            self_recorded_state["current_file"] = filename
-        
-        # 如果MPV没返回文件名，尝试使用全局变量
-        if not filename and current_playing_file:
-            filename = current_playing_file
-            app.logger.debug(f"[状态获取] MPV未返回文件名，使用全局变量: {filename}")
-
-        if not filename:  # 如果filename为空，尝试获取path属性
-            app.logger.debug("[状态获取] filename为空，尝试获取path属性")
-            path, path_msg = get_mpv_property("path")
-            app.logger.debug(f"[状态获取] 获取path属性结果: {path}, 消息: {path_msg}")
-            if path:
-                # 从路径中提取文件名
-                filename = os.path.basename(path)
-                app.logger.debug(f"[状态获取] 从path提取文件名: {filename}")
-                # 更新自己记录的状态
-                self_recorded_state["current_file"] = filename
-        
-        # 如果还是没有，尝试media-title
-        if not filename:
-            app.logger.debug("[状态获取] filename仍为空，尝试获取media-title属性")
-            media_title, media_msg = get_mpv_property("media-title")
-            app.logger.debug(f"[状态获取] 获取media-title属性结果: {media_title}, 消息: {media_msg}")
-            if media_title:
-                filename = media_title
-                app.logger.debug(f"[状态获取] 使用media-title作为文件名: {filename}")
-                # 更新自己记录的状态
-                self_recorded_state["current_file"] = filename
-        
-        # 确保最终返回的文件名是字符串类型
-        filename = filename if isinstance(filename, str) else ""
-        status["current_file"] = filename
-        app.logger.debug(f"[状态获取] 最终current_file值: {status['current_file']}, 类型: {type(status['current_file']).__name__}")
-        
-        # 更新全局当前播放文件并记录时间轴
-        if filename and filename != current_playing_file:
-            old_file = current_playing_file
-            current_playing_file = filename
-            add_to_timeline(
-                "play", 
-                f"开始播放: {filename}", 
-                {"previous_file": old_file, "current_file": filename}
-            )
-            app.logger.info(f"[时间轴] 播放文件变更: 从 '{old_file}' 到 '{filename}'")
-        
-        # 获取音量
-        app.logger.debug("[状态获取] 尝试获取volume属性")
-        volume, volume_msg = get_mpv_property("volume")
-        app.logger.debug(f"[状态获取] 获取volume属性结果: {volume}, 消息: {volume_msg}")
-        if volume is not None:
-            status["volume"] = volume
-            # 更新自己记录的音量
-            self_recorded_state["volume"] = volume
-        
-        # 获取播放列表
-        app.logger.debug("[状态获取] 尝试获取playlist属性")
-        playlist, playlist_msg = get_mpv_property("playlist")
-        app.logger.debug(f"[状态获取] 获取playlist属性结果: 类型={type(playlist).__name__}, 长度={len(playlist) if isinstance(playlist, list) else 'N/A'}")
-        status["playlist"] = playlist if playlist is not None else []
-        
-        # 获取播放位置和持续时间，增强可靠性
-        app.logger.debug("[状态获取] 尝试获取time-pos属性")
-        
-        # 重试获取time-pos属性
-        max_time_pos_retries = 3
-        time_pos_retry_count = 0
-        position = None
-        position_msg = ""
-        
-        while time_pos_retry_count < max_time_pos_retries and (position is None or position == 0):
-            position, position_msg = get_mpv_property("time-pos")
-            app.logger.debug(f"[状态获取] 获取time-pos属性结果: {position}, 消息: {position_msg}")
-            
-            if position is not None and position > 0:
-                break
-            
-            time_pos_retry_count += 1
-            time.sleep(0.1)  # 短暂等待后重试
-        
-        # 如果MPV无法返回有效位置，使用自己记录的位置
-        if position is None or position <= 0:
-            app.logger.debug("[状态获取] MPV无法返回有效位置，使用自己记录的位置")
-            position = self_recorded_state["position"]
-        
-        # 尝试获取duration属性，增加重试机制
-        max_retries = 5
-        retry_count = 0
-        duration = None
-        duration_msg = ""
-        
-        while retry_count < max_retries and (duration is None or duration == 0):
-            app.logger.debug(f"[状态获取] 尝试获取duration属性 (重试 {retry_count+1}/{max_retries})")
-            duration, duration_msg = get_mpv_property("duration")
-            app.logger.debug(f"[状态获取] 获取duration属性结果: {duration}, 消息: {duration_msg}")
-            
-            if duration is not None and duration > 0:
-                break
-            
-            retry_count += 1
-            time.sleep(0.1)  # 短暂等待后重试
-        
-        # 如果MPV无法返回有效时长，尝试使用自己记录的时长
-        if duration is None or duration <= 0:
-            app.logger.debug("[状态获取] MPV无法返回有效时长，使用自己记录的时长")
-            duration = self_recorded_state["duration"]
-        
-        # 如果自己记录的时长也无效，尝试使用文件路径获取时长
-        if duration is None or duration <= 0:
-            app.logger.debug("[状态获取] 自己记录的时长也无效，尝试使用文件路径获取")
-            
-            # 尝试获取当前播放文件的本地路径
-            try:
-                # 获取path属性
-                path, path_msg = get_mpv_property("path")
-                file_path = None
-                
-                if path and isinstance(path, str) and path.strip():
-                    app.logger.debug(f"[状态获取] 获取到path属性: {path}")
-                    file_path = path
-                else:
-                    # 如果path属性获取失败，尝试从filename构建本地路径
-                    filename = status.get("current_file", "")
-                    if filename:
-                        # 构建本地缓存路径
-                        local_path = os.path.join(LOCAL_DIR, filename)
-                        app.logger.debug(f"[状态获取] 尝试使用本地缓存路径: {local_path}")
-                        file_path = local_path
-                
-                # 获取多种方式的时长信息
-                if file_path and os.path.exists(file_path):
-                    # 使用ffprobe获取时长
-                    ffprobe_duration = 0
-                    try:
-                        import subprocess
-                        cmd = [
-                            'ffprobe',
-                            '-v', 'error',
-                            '-show_entries', 'format=duration',
-                            '-of', 'default=noprint_wrappers=1:nokey=1',
-                            file_path
-                        ]
-                        result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                        if result.returncode == 0 and result.stdout.strip():
-                            ffprobe_duration = float(result.stdout.strip())
-                            app.logger.debug(f"[状态获取] 使用ffprobe获取到时长: {ffprobe_duration}秒")
-                    except Exception as e:
-                        app.logger.debug(f"[状态获取] 使用ffprobe获取时长失败: {e}")
-                    
-                    
-                    # 只使用ffprobe获取时长
-                    if ffprobe_duration > 0:
-                        duration = ffprobe_duration
-                        app.logger.debug(f"[状态获取] 使用文件路径获取到时长: {duration}秒")
-                    
-                    # 添加ffprobe时长信息到状态
-                    status["duration_info"] = {
-                        "ffprobe": ffprobe_duration,
-                        "file_path": file_path
-                    }
-            except Exception as e:
-                app.logger.debug(f"[状态获取] 使用文件路径获取时长失败: {e}")
-        
-        # 添加进度相关信息到返回状态
-        # 优先使用MPV返回的position，但如果MPV返回的position为0且自己记录的position大于0，则使用自己记录的position
-        if position is not None and position > 0:
-            current_position = position
+    
+    # 额外状态信息
+    eof_reached, _ = get_mpv_property("eof-reached") # 仅保留这个快速检查做校验，也可移除如果完全信任monitor
+    status["eof_reached"] = eof_reached if eof_reached is not None else False
+    status["idle_active"] = False
+    
+    # 计算进度
+    if status.get("duration", 0) > 0 and status.get("position", 0) >= 0:
+         # progress 已经在timer_worker中更新了，这里双重校验可选
+         pass
+    
+    # 遮罩提醒
+    global current_mask_reminder
+    if current_mask_reminder:
+        if time.time() > current_mask_reminder['expires_at']:
+            current_mask_reminder = None
         else:
-            current_position = self_recorded_state["position"]
-        
-        current_duration = duration if duration is not None else self_recorded_state["duration"]
-        
-        # 计算播放进度百分比
-        if current_duration and current_duration > 0:
-            current_progress = (current_position / current_duration) * 100 if current_position else 0
-            current_progress = round(current_progress, 2)
-            app.logger.debug(f"[状态获取] 计算播放进度: {current_progress}%")
-        else:
-            # 如果无法计算进度，重置位置和进度
-            current_position = 0
-            current_progress = 0
-            app.logger.debug(f"[状态获取] 无法计算进度，重置位置和进度")
-        
-        # 确保进度在合理范围内
-        current_progress = max(0, min(100, current_progress))
-        
-        # 更新自己记录的进度状态
-        self_recorded_state["position"] = current_position
-        self_recorded_state["duration"] = current_duration
-        self_recorded_state["progress"] = current_progress
-        
-        # 添加MPV获取的时长信息
-        status["mpv_duration"] = duration
-        
-        # 确保duration_info字段存在并只包含FFprobe时长信息
-        if "duration_info" not in status:
-            status["duration_info"] = {
-                "ffprobe": 0,
-                "file_path": None
-            }
-        
-        # 尝试获取当前播放文件的本地路径，用于获取多种方式的时长信息
-        try:
-            # 获取path属性
-            path, path_msg = get_mpv_property("path")
-            file_path = None
-            
-            if path and isinstance(path, str) and path.strip():
-                file_path = path
-            else:
-                # 如果path属性获取失败，尝试从filename构建本地路径
-                filename = status.get("current_file", "")
-                if filename:
-                    # 构建本地缓存路径
-                    local_path = os.path.join(LOCAL_DIR, filename)
-                    file_path = local_path
-            
-            # 获取多种方式的时长信息
-            if file_path and os.path.exists(file_path):
-                # 使用ffprobe获取时长
-                ffprobe_duration = 0
-                try:
-                    import subprocess
-                    cmd = [
-                        'ffprobe',
-                        '-v', 'error',
-                        '-show_entries', 'format=duration',
-                        '-of', 'default=noprint_wrappers=1:nokey=1',
-                        file_path
-                    ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                    if result.returncode == 0 and result.stdout.strip():
-                        ffprobe_duration = float(result.stdout.strip())
-                        app.logger.debug(f"[状态获取] 使用ffprobe获取到时长: {ffprobe_duration}秒")
-                except Exception as e:
-                    app.logger.debug(f"[状态获取] 使用ffprobe获取时长失败: {e}")
-                
-                # 使用ffmpeg获取时长
-                ffmpeg_duration = 0
-                try:
-                    cmd = [
-                        'ffmpeg',
-                        '-i', file_path,
-                        '-v', 'error',
-                        '-f', 'null',
-                        '-'
-                    ]
-                    result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-                    if result.stderr.strip():
-                        # 从ffmpeg的错误输出中提取时长
-                        import re
-                        duration_match = re.search(r"Duration: (\d+):(\d+):(\d+)\.(\d+)", result.stderr)
-                        if duration_match:
-                            hours = int(duration_match.group(1))
-                            minutes = int(duration_match.group(2))
-                            seconds = int(duration_match.group(3))
-                            milliseconds = int(duration_match.group(4)) / 100
-                            ffmpeg_duration = hours * 3600 + minutes * 60 + seconds + milliseconds
-                            app.logger.debug(f"[状态获取] 使用ffmpeg获取到时长: {ffmpeg_duration}秒")
-                except Exception as e:
-                    app.logger.debug(f"[状态获取] 使用ffmpeg获取时长失败: {e}")
-                
-                # 使用mutagen获取时长
-                mutagen_duration = 0
-                try:
-                    import mutagen
-                    audio = mutagen.File(file_path)
-                    if audio and hasattr(audio.info, 'length'):
-                        mutagen_duration = audio.info.length
-                        app.logger.debug(f"[状态获取] 使用mutagen获取到时长: {mutagen_duration}秒")
-                except Exception as e:
-                    app.logger.debug(f"[状态获取] 使用mutagen获取时长失败: {e}")
-                
-                # 更新duration_info字段，只保留FFprobe时长
-                status["duration_info"] = {
-                    "ffprobe": ffprobe_duration,
-                    "file_path": file_path
-                }
-        except Exception as e:
-            app.logger.debug(f"[状态获取] 获取多种方式的时长信息失败: {e}")
-        
-        # 添加进度相关信息到返回状态
-        status["position"] = current_position
-        status["duration"] = current_duration
-        status["progress"] = current_progress
-        
-        # 添加自己记录的状态作为备用
-        status["self_recorded_position"] = self_recorded_state["position"]
-        status["self_recorded_duration"] = self_recorded_state["duration"]
-        status["self_recorded_progress"] = self_recorded_state["progress"]
-        
-        # 添加遮罩提醒信息
-        global current_mask_reminder
-        if current_mask_reminder:
-            # 检查提醒是否过期
-            if time.time() > current_mask_reminder['expires_at']:
-                current_mask_reminder = None
-            else:
-                status["mask_reminder"] = current_mask_reminder
-        else:
-            status["mask_reminder"] = None
-        
-        status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
-        status["mpv_error"] = MPV_RUNTIME_ERROR or ""
-        app.logger.debug(f"[状态获取] 完整状态数据: {json.dumps(status, ensure_ascii=False)}")
-        app.logger.debug(f"[状态获取] 自己记录的状态: {json.dumps(self_recorded_state, ensure_ascii=False)}")
-        return jsonify(status), 200
-    except Exception as e:
-        app.logger.error(f"[状态获取] 获取状态时发生异常: {str(e)}", exc_info=True)
-        return jsonify({"status": "error", "message": f"获取状态失败: {str(e)}", "error_type": type(e).__name__}), 500
+            status["mask_reminder"] = current_mask_reminder
+    else:
+        status["mask_reminder"] = None
+    
+    status["mpv_ready"] = os.path.exists(MPV_SOCKET_PATH)
+    status["mpv_error"] = MPV_RUNTIME_ERROR or ""
+    
+    # 调试日志仅在确实需要时打印，避免刷屏
+    # app.logger.debug(f"[状态获取] 快速返回: {json.dumps(status, ensure_ascii=False)}")
+    
+    return jsonify(status), 200
 
 
 @app.route('/mpv/status/self', methods=['GET'])

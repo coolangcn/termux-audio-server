@@ -1467,10 +1467,12 @@ def pause_toggle():
     # 使用全局变量
     global self_recorded_state, current_playing_file
     
-    # 从自己记录的状态中获取当前播放状态，使用state_lock保护
+    # 从MPV获取当前的暂停状态，使用这个状态作为基准
+    # 不再从自己记录的状态中获取，因为自己记录的状态可能与MPV的实际状态不一致
+    actual_paused, _ = get_mpv_property("pause")
+    
+    # 从自己记录的状态中获取其他信息，使用state_lock保护
     with state_lock:
-        is_paused = self_recorded_state["paused"]
-        is_playing = self_recorded_state["playing"]
         current_file = self_recorded_state["current_file"]
     
     # 改进播放状态判断：
@@ -1503,28 +1505,27 @@ def pause_toggle():
     # 2. 如果没有播放文件，切换状态后播放下一首
     operation_logger.info("[播放控制] 切换播放/暂停状态")
     # 发送遮罩提醒
-    new_state = "播放" if is_paused else "暂停"
+    new_state = "播放" if actual_paused else "暂停"
     send_mask_reminder(f"切换到{new_state}状态", "pause_toggle")
     success, message = send_mpv_command(["cycle", "pause"])
     if success:
         # 获取当前播放文件信息
         current_file_info = current_file or current_playing_file or "未知文件"
         
-        # 直接基于我们自己记录的状态来切换，而不是依赖于从MPV获取的状态
-        # 因为get_mpv_property函数在遇到错误时会返回默认值False，这可能导致状态更新错误
+        # 发送命令后，再次从MPV获取最新的暂停状态
+        # 因为"cycle pause"命令会切换MPV的暂停状态
+        after_pause, _ = get_mpv_property("pause")
+        
+        # 更新自己记录的状态，使用从MPV获取的实际状态
         with state_lock:
-            # 切换暂停状态
-            self_recorded_state["paused"] = not self_recorded_state["paused"]
-            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
-            
-            # 获取切换后的状态
-            actual_paused = self_recorded_state["paused"]
+            self_recorded_state["paused"] = after_pause
+            self_recorded_state["playing"] = not after_pause  # playing状态应该是paused的反义词
         
         # 记录到时间轴
         add_to_timeline(
             "pause_toggle", 
             "播放/暂停切换", 
-            {"current_file": current_file_info, "pause_state": actual_paused}
+            {"current_file": current_file_info, "pause_state": after_pause}
         )
         app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         

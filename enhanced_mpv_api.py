@@ -1462,10 +1462,11 @@ def pause_toggle():
     # 使用全局变量
     global self_recorded_state, current_playing_file
     
-    # 从自己记录的状态中获取当前播放状态
-    is_paused = self_recorded_state["paused"]
-    is_playing = self_recorded_state["playing"]
-    current_file = self_recorded_state["current_file"]
+    # 从自己记录的状态中获取当前播放状态，使用state_lock保护
+    with state_lock:
+        is_paused = self_recorded_state["paused"]
+        is_playing = self_recorded_state["playing"]
+        current_file = self_recorded_state["current_file"]
     
     # 改进播放状态判断：
     # 1. 自己记录的状态中有文件名
@@ -1503,16 +1504,25 @@ def pause_toggle():
     if success:
         # 获取当前播放文件信息
         current_file_info = current_file or current_playing_file or "未知文件"
+        
+        # 从MPV获取最新的暂停状态，确保状态的一致性
+        actual_paused, _ = get_mpv_property("pause")
+        
         # 记录到时间轴
         add_to_timeline(
             "pause_toggle", 
             "播放/暂停切换", 
-            {"current_file": current_file_info, "pause_state": not is_paused}
+            {"current_file": current_file_info, "pause_state": actual_paused}
         )
-        # 更新自己记录的状态
+        # 更新自己记录的状态，使用从MPV获取的实际状态
         with state_lock:
-            self_recorded_state["paused"] = not is_paused
-            self_recorded_state["playing"] = not self_recorded_state["paused"]  # playing状态应该是paused的反义词
+            if actual_paused is not None:
+                self_recorded_state["paused"] = actual_paused
+                self_recorded_state["playing"] = not actual_paused  # playing状态应该是paused的反义词
+            else:
+                # 如果获取失败，才使用基于之前状态的切换
+                self_recorded_state["paused"] = not self_recorded_state["paused"]
+                self_recorded_state["playing"] = not self_recorded_state["paused"]
         app.logger.debug(f"[播放控制] 自己记录的状态已更新: {json.dumps(self_recorded_state, ensure_ascii=False)}")
         
         # 如果没有播放文件，播放下一首
@@ -1523,7 +1533,10 @@ def pause_toggle():
             send_mask_reminder("没有播放文件，触发播放下一首", "play_next")
             return next_track()
         
-        return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": not is_paused}), 200
+        # 重新获取最新的paused状态，确保返回正确的状态
+        with state_lock:
+            new_pause_state = self_recorded_state["paused"]
+        return jsonify({"status": "ok", "action": "pause_toggle", "new_pause_state": new_pause_state}), 200
     else:
         # 如果发送命令失败，返回错误信息
         operation_logger.warning(f"[播放控制] 发送暂停命令失败: {message}")

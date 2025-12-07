@@ -94,6 +94,23 @@ os.makedirs(LOG_DIR, exist_ok=True)
 operation_logger = logging.getLogger('operations')
 operation_logger.setLevel(logging.DEBUG)
 
+# 时间墙配置 - 支持通过环境变量配置
+# 默认播放时间段：早上9点到晚上9点（东八区）
+# 环境变量格式：PLAY_START_HOUR=9，PLAY_END_HOUR=21
+PLAY_START_HOUR = int(os.environ.get('PLAY_START_HOUR', 9))
+PLAY_END_HOUR = int(os.environ.get('PLAY_END_HOUR', 21))
+
+# 验证配置的时间段是否合法
+if PLAY_START_HOUR < 0 or PLAY_START_HOUR > 23:
+    PLAY_START_HOUR = 9
+    operation_logger.warning(f"[时间墙] 无效的开始时间配置: {PLAY_START_HOUR}，已重置为默认值9")
+
+if PLAY_END_HOUR < 0 or PLAY_END_HOUR > 23:
+    PLAY_END_HOUR = 21
+    operation_logger.warning(f"[时间墙] 无效的结束时间配置: {PLAY_END_HOUR}，已重置为默认值21")
+
+operation_logger.debug(f"[时间墙] 配置的播放时间段: {PLAY_START_HOUR}点到{PLAY_END_HOUR}点")
+
 # 添加控制台处理器，用于实时输出
 console_handler = logging.StreamHandler()
 console_handler.setLevel(logging.DEBUG)
@@ -212,6 +229,36 @@ def send_mpv_command(command):
         error_msg = f"Exception when sending MPV command: {str(e)}"
         operation_logger.debug(f"[MPV命令] {error_msg}")
         return False, error_msg
+
+def is_playback_allowed():
+    """判断当前时间是否在允许播放的时间段内
+    
+    返回:
+        bool: True表示允许播放，False表示不允许播放
+    """
+    import datetime
+    from pytz import timezone
+    
+    # 使用全局配置的播放时间段
+    global PLAY_START_HOUR, PLAY_END_HOUR
+    
+    # 设置东八区时区
+    tz = timezone('Asia/Shanghai')
+    
+    # 获取当前时间（东八区）
+    now = datetime.datetime.now(tz)
+    
+    # 获取当前小时
+    current_hour = now.hour
+    
+    # 判断是否在允许播放的时间段内
+    # PLAY_START_HOUR到PLAY_END_HOUR允许播放，其他时间不允许
+    allowed = PLAY_START_HOUR <= current_hour < PLAY_END_HOUR
+    
+    operation_logger.debug(f"[时间墙] 当前时间: {now.strftime('%Y-%m-%d %H:%M:%S')}, 配置的播放时间段: {PLAY_START_HOUR}点到{PLAY_END_HOUR}点, 允许播放: {allowed}")
+    
+    return allowed
+
 
 def add_to_timeline(action, description, details=None):
     """添加事件到时间轴"""
@@ -1468,6 +1515,12 @@ def pause_toggle():
     # 使用全局变量
     global self_recorded_state, current_playing_file
     
+    # 检查当前时间是否允许播放
+    if not is_playback_allowed():
+        # 发送遮罩提醒
+        send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+    
     # 从自己记录的状态中获取当前状态，作为基准
     with state_lock:
         actual_paused = self_recorded_state["paused"]
@@ -1557,6 +1610,12 @@ def pause_toggle():
 @log_operation("下一首")
 def next_track():
     try:
+        # 检查当前时间是否允许播放
+        if not is_playback_allowed():
+            # 发送遮罩提醒
+            send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        
         global current_playing_file, next_playing_file, self_recorded_state
         
         # 发送遮罩提醒
@@ -1758,6 +1817,12 @@ def next_track():
 @log_operation("上一首")
 def prev_track():
     try:
+        # 检查当前时间是否允许播放
+        if not is_playback_allowed():
+            # 发送遮罩提醒
+            send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        
         global current_playing_file, next_playing_file
         
         # 发送遮罩提醒
@@ -1902,6 +1967,12 @@ def prev_track():
 @app.route('/mpv/stop', methods=['GET'])
 @log_operation("停止播放")
 def stop_playback():
+    # 检查当前时间是否允许播放
+    if not is_playback_allowed():
+        # 发送遮罩提醒
+        send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+    
     global current_playing_file
     
     # 获取当前播放文件信息
@@ -1967,6 +2038,12 @@ def adjust_volume():
 @log_operation("设置音量")
 def set_volume():
     try:
+        # 检查当前时间是否允许播放
+        if not is_playback_allowed():
+            # 发送遮罩提醒
+            send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        
         value = int(request.args.get('value', 50))
         value = max(0, min(100, value))  # 限制在0-100之间
     except ValueError:
@@ -1992,6 +2069,12 @@ def set_volume():
 @log_operation("随机播放")
 def shuffle_playlist():
     """随机播放"""
+    # 检查当前时间是否允许播放
+    if not is_playback_allowed():
+        # 发送遮罩提醒
+        send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+    
     # 发送遮罩提醒
     send_mask_reminder("正在随机打乱播放列表", "shuffle_playlist")
     
@@ -2016,6 +2099,12 @@ def shuffle_playlist():
 @log_operation("播放指定歌曲")
 def play_track(index):
     """播放指定索引的歌曲"""
+    # 检查当前时间是否允许播放
+    if not is_playback_allowed():
+        # 发送遮罩提醒
+        send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+    
     # 发送遮罩提醒
     send_mask_reminder(f"正在播放播放列表中索引为 {index} 的歌曲", "play_track")
     
@@ -2033,6 +2122,12 @@ def play_track(index):
 def seek():
     """调整播放进度"""
     try:
+        # 检查当前时间是否允许播放
+        if not is_playback_allowed():
+            # 发送遮罩提醒
+            send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        
         position = request.args.get('position')
         if not position:
             return jsonify({"status": "error", "message": "Missing position parameter"}), 400
@@ -2079,8 +2174,6 @@ def seek():
         send_mask_reminder(f"播放进度调整失败: {str(e)}", "seek_error")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-@app.route('/mpv/play/file/<path:filename>', methods=['GET'])
-@log_operation("播放指定文件")
 def fade_in(duration=3.0):
     """实现音量渐入效果
     
@@ -2109,6 +2202,12 @@ def fade_in(duration=3.0):
 
 def play_file(filename):
     """播放指定文件（按需从NAS拉取）"""
+    # 检查当前时间是否允许播放
+    if not is_playback_allowed():
+        # 发送遮罩提醒
+        send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+        return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+    
     # 声明全局变量
     global current_playing_file, self_recorded_state
     
@@ -2240,11 +2339,23 @@ def play_file(filename):
     except Exception as e:
         return jsonify({"status": "error", "message": f"Failed to play file: {str(e)}"}), 500
 
+@app.route('/mpv/play/file/<path:filename>', methods=['GET'])
+@log_operation("播放指定文件")
+def play_file_route(filename):
+    """播放指定文件的路由处理函数"""
+    return play_file(filename)
+
 @app.route('/mpv/build_playlist', methods=['POST'])
 @log_operation("构建播放列表")
 def build_playlist():
     """构建完整播放列表"""
     try:
+        # 检查当前时间是否允许播放
+        if not is_playback_allowed():
+            # 发送遮罩提醒
+            send_mask_reminder("当前时间不允许播放，只有早上9点到晚上9点可以播放", "playback_not_allowed")
+            return jsonify({"status": "error", "message": "当前时间不允许播放，只有早上9点到晚上9点可以播放"}), 403
+        
         # 发送遮罩提醒
         send_mask_reminder("正在构建播放列表", "build_playlist")
         

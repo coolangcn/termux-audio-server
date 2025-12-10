@@ -10,7 +10,8 @@
     --bg-card: rgba(30, 30, 30, 0.6);
     --bg-glass: rgba(255, 255, 255, 0.03);
 
-    --accent-primary: #00E054; /* Vivid Green */
+    --accent-primary: #00E054;
+    /* Vivid Green */
     --accent-glow: rgba(0, 224, 84, 0.4);
     --accent-gradient: linear-gradient(135deg, #00E054 0%, #00A33D 100%);
 
@@ -44,7 +45,7 @@
 body {
     font-family: 'Outfit', sans-serif;
     background-color: var(--bg-deep);
-    background-image: 
+    background-image:
         radial-gradient(circle at 0% 0%, rgba(0, 224, 84, 0.08) 0%, transparent 40%),
         radial-gradient(circle at 100% 100%, rgba(0, 100, 255, 0.05) 0%, transparent 40%);
     color: var(--text-primary);
@@ -57,7 +58,8 @@ body {
 
 .container {
     width: 100%;
-    max-width: 480px; /* Mobile-first focused width */
+    max-width: 480px;
+    /* Mobile-first focused width */
     margin: 0 auto;
     position: relative;
     z-index: 1;
@@ -69,6 +71,7 @@ h1 {
     margin-bottom: 24px;
     text-align: center;
     background: linear-gradient(to right, #fff, #aaa);
+    background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     letter-spacing: -0.5px;
@@ -99,7 +102,7 @@ h1 {
     align-items: center;
     justify-content: center;
     font-size: 48px;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     border: 1px solid var(--border-subtle);
 }
 
@@ -237,7 +240,7 @@ h1 {
     background: var(--bg-surface);
     font-size: 32px;
     color: var(--accent-primary);
-    box-shadow: 
+    box-shadow:
         0 10px 30px -5px rgba(0, 0, 0, 0.5),
         inset 0 0 0 2px var(--border-subtle);
     position: relative;
@@ -253,7 +256,7 @@ h1 {
 
 .control-btn.primary:hover:not(:disabled) {
     transform: scale(1.05);
-    box-shadow: 
+    box-shadow:
         0 20px 40px -10px rgba(0, 0, 0, 0.6),
         0 0 20px rgba(0, 224, 84, 0.2),
         inset 0 0 0 2px rgba(0, 224, 84, 0.5);
@@ -418,7 +421,7 @@ h1 {
     background: rgba(0, 0, 0, 0.3);
     border-radius: var(--radius-md);
     padding: 12px;
-    height: 150px;
+    height: 400px;
     overflow-y: auto;
     font-family: 'JetBrains Mono', monospace;
     font-size: 12px;
@@ -573,7 +576,7 @@ h1 {
 /* Timeline Specifics */
 .timeline-item {
     padding: 8px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -600,12 +603,19 @@ h1 {
 
 /* Animations */
 @keyframes spin {
-    to { transform: rotate(360deg); }
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 @keyframes fadeIn {
-    from { opacity: 0; }
-    to { opacity: 1; }
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
 }
 
 /* 遮罩提醒样式 */
@@ -645,9 +655,11 @@ h1 {
     0% {
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     }
+
     50% {
         box-shadow: 0 8px 40px rgba(0, 224, 84, 0.8);
     }
+
     100% {
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     }
@@ -680,5 +692,6 @@ h1 {
 .self-recorded-info div {
     margin-right: 15px;
     margin-bottom: 5px;
-    color: #4ade80; /* 使用绿色来区分自己记录的状态值 */
+    color: #4ade80;
+    /* 使用绿色来区分自己记录的状态值 */
 }

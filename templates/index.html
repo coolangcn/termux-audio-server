@@ -898,9 +898,12 @@
                 .then(data => {
                     const timelineContent = document.getElementById('timeline-content');
                     if (data.events && data.events.length > 0) {
+                        // 反转事件数组，使最新的事件在顶部
+                        const reversedEvents = data.events.slice().reverse();
+                        
                         // 构建时间轴HTML内容，最新的在顶部
                         let timelineHtml = '';
-                        data.events.forEach(event => {
+                        reversedEvents.forEach(event => {
                             // 格式化时间戳
                             const timestamp = new Date(event.timestamp).toLocaleString();
 
@@ -932,9 +935,9 @@
                         timelineContent.innerHTML = '暂无时间轴记录';
                     }
 
-                    // 滚动到底部（最新记录）
+                    // 滚动到顶部显示最新记录
                     const timelineContainer = document.getElementById('timeline-container');
-                    timelineContainer.scrollTop = 0; // 最新的在顶部，所以滚动到顶部
+                    timelineContainer.scrollTop = 0;
                 })
                 .catch(error => {
                     console.error('Error loading timeline:', error);

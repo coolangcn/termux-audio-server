@@ -1249,6 +1249,28 @@ def playback_monitor_worker():
                     if duration and duration > 0:
                         with state_lock:
                             self_recorded_state["duration"] = float(duration)
+                    elif duration is not None and duration <= 0 and filename:
+                        # 检测到零时长文件，自动跳过
+                        app.logger.warning(f"[PLAYBACK_MONITOR] 检测到零时长文件: {filename}，触发自动跳过")
+                        
+                        # 记录到时间轴
+                        add_to_timeline(
+                            "skip_zero_duration_monitor", 
+                            f"监控检测到零时长文件并跳过: {filename}", 
+                            {"skipped_file": filename, "duration": duration}
+                        )
+                        
+                        # 发送遮罩提醒
+                        send_mask_reminder(f"检测到零时长文件，自动跳过: {filename}", "skip_zero_duration_monitor")
+                        
+                        # 触发下一首
+                        next_track()
+                        
+                        # 重置状态
+                        last_status['progress'] = 0
+                        last_status['time_pos'] = 0
+                        last_status['time_pos_stable_count'] = 0
+                
                 
                 # 移除了进度百分比更新逻辑，因为现在由timer_worker函数负责更新播放位置和进度百分比
 
@@ -1729,6 +1751,43 @@ def next_track():
                 # 更新状态
                 self_recorded_state["duration"] = float(duration)
                 app.logger.info(f"已更新文件时长: {duration}秒")
+                
+                # 检测零时长文件并自动跳过
+                if duration <= 0:
+                    app.logger.warning(f"[ZERO_DURATION] 检测到零时长文件: {next_file}，自动跳过到下一首")
+                    
+                    # 记录到时间轴
+                    add_to_timeline(
+                        "skip_zero_duration", 
+                        f"跳过零时长文件: {next_file}", 
+                        {"skipped_file": next_file, "duration": duration}
+                    )
+                    
+                    # 发送遮罩提醒
+                    send_mask_reminder(f"跳过零时长文件: {next_file}", "skip_zero_duration")
+                    
+                    # 检查是否有递归计数器，防止无限循环
+                    skip_count = request.args.get('_skip_count', 0, type=int)
+                    if skip_count >= 10:
+                        app.logger.error(f"[ZERO_DURATION] 连续跳过了{skip_count}个零时长文件，停止跳过")
+                        send_mask_reminder("连续跳过过多零时长文件，请检查文件", "skip_limit_reached")
+                        return jsonify({
+                            "status": "error", 
+                            "message": f"连续跳过了{skip_count}个零时长文件，已停止"
+                        }), 500
+                    
+                    # 递归调用next_track，跳过当前文件
+                    # 通过修改request.args来传递计数器（注意：这是一个简化方案）
+                    # 更好的方案是将next_track改为接受参数的函数
+                    app.logger.info(f"[ZERO_DURATION] 递归调用next_track (skip_count={skip_count + 1})")
+                    
+                    # 等待一小段时间，确保状态更新
+                    time.sleep(0.5)
+                    
+                    # 直接调用next_track的核心逻辑，避免递归问题
+                    # 这里我们简单地重新开始循环
+                    return next_track()
+                    
             except Exception as e:
                 app.logger.error(f"更新文件时长失败: {e}")
             

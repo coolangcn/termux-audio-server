@@ -1249,28 +1249,6 @@ def playback_monitor_worker():
                     if duration and duration > 0:
                         with state_lock:
                             self_recorded_state["duration"] = float(duration)
-                    elif duration is not None and duration <= 0 and filename:
-                        # 检测到零时长文件，自动跳过
-                        app.logger.warning(f"[PLAYBACK_MONITOR] 检测到零时长文件: {filename}，触发自动跳过")
-                        
-                        # 记录到时间轴
-                        add_to_timeline(
-                            "skip_zero_duration_monitor", 
-                            f"监控检测到零时长文件并跳过: {filename}", 
-                            {"skipped_file": filename, "duration": duration}
-                        )
-                        
-                        # 发送遮罩提醒
-                        send_mask_reminder(f"检测到零时长文件，自动跳过: {filename}", "skip_zero_duration_monitor")
-                        
-                        # 触发下一首
-                        next_track()
-                        
-                        # 重置状态
-                        last_status['progress'] = 0
-                        last_status['time_pos'] = 0
-                        last_status['time_pos_stable_count'] = 0
-                
                 
                 # 移除了进度百分比更新逻辑，因为现在由timer_worker函数负责更新播放位置和进度百分比
 
@@ -1740,73 +1718,17 @@ def next_track():
             
             # 获取并更新文件时长
             try:
-                # 初始化duration为0
-                with state_lock:
-                    self_recorded_state["duration"] = 0
+                # 优先使用ffprobe获取准确时长
+                duration = get_file_duration(local_path)
+                if duration <= 0:
+                    # 如果ffprobe失败，尝试从MPV获取
+                    duration, _ = get_mpv_property("duration")
+                    if duration is None:
+                        duration = 0
                 
-                app.logger.info(f"[DURATION_CHECK] 等待playback_monitor_worker更新时长...")
-                
-                # 等待playback_monitor_worker更新duration
-                # playback_monitor_worker会从MPV获取duration并更新到self_recorded_state
-                # 最多等待5秒，每0.5秒检查一次
-                max_wait_time = 5.0
-                check_interval = 0.5
-                waited_time = 0
-                
-                while waited_time < max_wait_time:
-                    time.sleep(check_interval)
-                    waited_time += check_interval
-                    
-                    # 从self_recorded_state读取duration（这是前端显示的值）
-                    with state_lock:
-                        current_duration = self_recorded_state["duration"]
-                    
-                    if current_duration > 0:
-                        app.logger.info(f"[DURATION_CHECK] 获取到有效时长: {current_duration}秒 (等待{waited_time}秒)")
-                        break
-                    
-                    app.logger.debug(f"[DURATION_CHECK] 等待中... ({waited_time}秒)")
-                
-                # 最终检查 - 使用self_recorded_state中的值（和前端显示的一致）
-                with state_lock:
-                    final_duration = self_recorded_state["duration"]
-                
-                app.logger.info(f"[DURATION_CHECK] 最终时长: {final_duration}秒")
-                
-                # 检测无效时长文件并自动跳过 - 使用最小有效时长阈值
-                MIN_VALID_DURATION = 1.0  # 最小有效时长（秒）
-                if final_duration < MIN_VALID_DURATION:
-                    app.logger.warning(f"[ZERO_DURATION] 检测到无效时长文件: {next_file}，时长={final_duration}秒，自动跳过到下一首")
-                    
-                    # 记录到时间轴
-                    add_to_timeline(
-                        "skip_zero_duration", 
-                        f"跳过无效时长文件: {next_file} (时长={final_duration}秒)", 
-                        {"skipped_file": next_file, "duration": final_duration}
-                    )
-                    
-                    # 发送遮罩提醒
-                    send_mask_reminder(f"跳过无效时长文件: {next_file} (时长={final_duration}秒)", "skip_zero_duration")
-                    
-                    # 检查是否有递归计数器，防止无限循环
-                    skip_count = request.args.get('_skip_count', 0, type=int)
-                    if skip_count >= 10:
-                        app.logger.error(f"[ZERO_DURATION] 连续跳过了{skip_count}个无效时长文件，停止跳过")
-                        send_mask_reminder("连续跳过过多无效时长文件，请检查文件", "skip_limit_reached")
-                        return jsonify({
-                            "status": "error", 
-                            "message": f"连续跳过了{skip_count}个无效时长文件，已停止"
-                        }), 500
-                    
-                    # 递归调用next_track，跳过当前文件
-                    app.logger.info(f"[ZERO_DURATION] 递归调用next_track (skip_count={skip_count + 1})")
-                    
-                    # 等待一小段时间，确保状态更新
-                    time.sleep(0.5)
-                    
-                    # 直接调用next_track的核心逻辑，避免递归问题
-                    return next_track()
-                    
+                # 更新状态
+                self_recorded_state["duration"] = float(duration)
+                app.logger.info(f"已更新文件时长: {duration}秒")
             except Exception as e:
                 app.logger.error(f"更新文件时长失败: {e}")
             

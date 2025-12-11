@@ -164,6 +164,18 @@
                 .then(function (data) {
                     console.log('Status data received:', data);
 
+                    // 检测duration是否为0或空，如果是则自动跳到下一首
+                    if (data.duration !== undefined && data.duration !== null) {
+                        if (data.duration === 0 || data.duration === '') {
+                            console.warn('检测到当前曲目duration为0或空，自动跳到下一首');
+                            // 使用setTimeout避免立即调用导致的状态混乱
+                            setTimeout(function () {
+                                nextTrack();
+                            }, 500);
+                            return; // 提前返回，不继续更新UI
+                        }
+                    }
+
                     // 修复播放状态显示逻辑：当没有当前文件时显示"未播放"
                     // 确保current_file是字符串类型
                     var currentFile = typeof data.current_file === 'string' ? data.current_file : '';
@@ -191,12 +203,12 @@
 
                     // 更新进度条
                     updateProgressDisplay(data.position, data.duration);
-                    
+
                     // 更新FFprobe时长信息
                     if (data.duration_info) {
                         document.getElementById('ffprobe-duration').textContent = formatTime(data.duration_info.ffprobe);
                     }
-                    
+
                     // 更新自己记录的状态值
                     document.getElementById('self-recorded-playing').textContent = data.playing ? '是' : '否';
                     document.getElementById('self-recorded-paused').textContent = data.paused ? '是' : '否';
@@ -212,20 +224,20 @@
                     } else {
                         document.getElementById('self-recorded-last-update-time').textContent = '--';
                     }
-                    
+
                     // 处理遮罩提醒
                     if (data.mask_reminder) {
                         // 显示遮罩提醒
                         const maskReminder = document.getElementById('mask-reminder');
                         const maskReminderMessage = document.getElementById('mask-reminder-message');
                         const maskReminderType = document.getElementById('mask-reminder-type');
-                        
+
                         maskReminderMessage.textContent = data.mask_reminder.message;
                         maskReminderType.textContent = data.mask_reminder.type;
                         maskReminder.style.display = 'block';
-                        
+
                         // 3秒后自动隐藏遮罩提醒
-                        setTimeout(function() {
+                        setTimeout(function () {
                             maskReminder.style.display = 'none';
                         }, 3000);
                     } else {
@@ -900,7 +912,7 @@
                     if (data.events && data.events.length > 0) {
                         // 反转事件数组，使最新的事件在顶部
                         const reversedEvents = data.events.slice().reverse();
-                        
+
                         // 构建时间轴HTML内容，最新的在顶部
                         let timelineHtml = '';
                         reversedEvents.forEach(event => {

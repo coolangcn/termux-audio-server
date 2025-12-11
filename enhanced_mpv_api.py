@@ -1740,46 +1740,53 @@ def next_track():
             
             # 获取并更新文件时长
             try:
-                # 优先使用ffprobe获取准确时长
-                duration = get_file_duration(local_path)
-                app.logger.info(f"[DURATION_CHECK] ffprobe返回时长: {duration}秒")
+                # 初始化duration为0
+                with state_lock:
+                    self_recorded_state["duration"] = 0
                 
-                if duration <= 0:
-                    # 如果ffprobe失败，尝试从MPV获取（重试机制）
-                    app.logger.info(f"[DURATION_CHECK] ffprobe返回时长为0，尝试从MPV获取")
+                app.logger.info(f"[DURATION_CHECK] 等待playback_monitor_worker更新时长...")
+                
+                # 等待playback_monitor_worker更新duration
+                # playback_monitor_worker会从MPV获取duration并更新到self_recorded_state
+                # 最多等待5秒，每0.5秒检查一次
+                max_wait_time = 5.0
+                check_interval = 0.5
+                waited_time = 0
+                
+                while waited_time < max_wait_time:
+                    time.sleep(check_interval)
+                    waited_time += check_interval
                     
-                    max_retries = 3
-                    for retry in range(max_retries):
-                        time.sleep(0.5)  # 等待MPV加载文件
-                        mpv_duration, _ = get_mpv_property("duration")
-                        if mpv_duration and mpv_duration > 0:
-                            duration = mpv_duration
-                            app.logger.info(f"[DURATION_CHECK] MPV返回时长: {duration}秒 (重试{retry+1}次)")
-                            break
-                        app.logger.debug(f"[DURATION_CHECK] MPV重试{retry+1}/{max_retries}，仍未获取到有效时长")
+                    # 从self_recorded_state读取duration（这是前端显示的值）
+                    with state_lock:
+                        current_duration = self_recorded_state["duration"]
                     
-                    if duration is None or duration <= 0:
-                        duration = 0
-                        app.logger.warning(f"[DURATION_CHECK] 所有方法均无法获取有效时长")
+                    if current_duration > 0:
+                        app.logger.info(f"[DURATION_CHECK] 获取到有效时长: {current_duration}秒 (等待{waited_time}秒)")
+                        break
+                    
+                    app.logger.debug(f"[DURATION_CHECK] 等待中... ({waited_time}秒)")
                 
-                # 更新状态
-                self_recorded_state["duration"] = float(duration)
-                app.logger.info(f"已更新文件时长: {duration}秒")
+                # 最终检查 - 使用self_recorded_state中的值（和前端显示的一致）
+                with state_lock:
+                    final_duration = self_recorded_state["duration"]
                 
-                # 检测零时长文件并自动跳过 - 使用最小有效时长阈值
+                app.logger.info(f"[DURATION_CHECK] 最终时长: {final_duration}秒")
+                
+                # 检测无效时长文件并自动跳过 - 使用最小有效时长阈值
                 MIN_VALID_DURATION = 1.0  # 最小有效时长（秒）
-                if duration < MIN_VALID_DURATION:
-                    app.logger.warning(f"[ZERO_DURATION] 检测到无效时长文件: {next_file}，时长={duration}秒，自动跳过到下一首")
+                if final_duration < MIN_VALID_DURATION:
+                    app.logger.warning(f"[ZERO_DURATION] 检测到无效时长文件: {next_file}，时长={final_duration}秒，自动跳过到下一首")
                     
                     # 记录到时间轴
                     add_to_timeline(
                         "skip_zero_duration", 
-                        f"跳过无效时长文件: {next_file} (时长={duration}秒)", 
-                        {"skipped_file": next_file, "duration": duration}
+                        f"跳过无效时长文件: {next_file} (时长={final_duration}秒)", 
+                        {"skipped_file": next_file, "duration": final_duration}
                     )
                     
                     # 发送遮罩提醒
-                    send_mask_reminder(f"跳过无效时长文件: {next_file} (时长={duration}秒)", "skip_zero_duration")
+                    send_mask_reminder(f"跳过无效时长文件: {next_file} (时长={final_duration}秒)", "skip_zero_duration")
                     
                     # 检查是否有递归计数器，防止无限循环
                     skip_count = request.args.get('_skip_count', 0, type=int)
@@ -1792,15 +1799,12 @@ def next_track():
                         }), 500
                     
                     # 递归调用next_track，跳过当前文件
-                    # 通过修改request.args来传递计数器（注意：这是一个简化方案）
-                    # 更好的方案是将next_track改为接受参数的函数
                     app.logger.info(f"[ZERO_DURATION] 递归调用next_track (skip_count={skip_count + 1})")
                     
                     # 等待一小段时间，确保状态更新
                     time.sleep(0.5)
                     
                     # 直接调用next_track的核心逻辑，避免递归问题
-                    # 这里我们简单地重新开始循环
                     return next_track()
                     
             except Exception as e:

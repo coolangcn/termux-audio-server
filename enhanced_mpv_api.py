@@ -1742,38 +1742,53 @@ def next_track():
             try:
                 # 优先使用ffprobe获取准确时长
                 duration = get_file_duration(local_path)
+                app.logger.info(f"[DURATION_CHECK] ffprobe返回时长: {duration}秒")
+                
                 if duration <= 0:
-                    # 如果ffprobe失败，尝试从MPV获取
-                    duration, _ = get_mpv_property("duration")
-                    if duration is None:
+                    # 如果ffprobe失败，尝试从MPV获取（重试机制）
+                    app.logger.info(f"[DURATION_CHECK] ffprobe返回时长为0，尝试从MPV获取")
+                    
+                    max_retries = 3
+                    for retry in range(max_retries):
+                        time.sleep(0.5)  # 等待MPV加载文件
+                        mpv_duration, _ = get_mpv_property("duration")
+                        if mpv_duration and mpv_duration > 0:
+                            duration = mpv_duration
+                            app.logger.info(f"[DURATION_CHECK] MPV返回时长: {duration}秒 (重试{retry+1}次)")
+                            break
+                        app.logger.debug(f"[DURATION_CHECK] MPV重试{retry+1}/{max_retries}，仍未获取到有效时长")
+                    
+                    if duration is None or duration <= 0:
                         duration = 0
+                        app.logger.warning(f"[DURATION_CHECK] 所有方法均无法获取有效时长")
                 
                 # 更新状态
                 self_recorded_state["duration"] = float(duration)
                 app.logger.info(f"已更新文件时长: {duration}秒")
                 
-                # 检测零时长文件并自动跳过
-                if duration <= 0:
-                    app.logger.warning(f"[ZERO_DURATION] 检测到零时长文件: {next_file}，自动跳过到下一首")
+                # 检测零时长文件并自动跳过 - 使用最小有效时长阈值
+                MIN_VALID_DURATION = 1.0  # 最小有效时长（秒）
+                if duration < MIN_VALID_DURATION:
+                    app.logger.warning(f"[ZERO_DURATION] 检测到无效时长文件: {next_file}，时长={duration}秒，自动跳过到下一首")
                     
                     # 记录到时间轴
                     add_to_timeline(
                         "skip_zero_duration", 
-                        f"跳过零时长文件: {next_file}", 
+                        f"跳过无效时长文件: {next_file} (时长={duration}秒)", 
                         {"skipped_file": next_file, "duration": duration}
                     )
                     
                     # 发送遮罩提醒
-                    send_mask_reminder(f"跳过零时长文件: {next_file}", "skip_zero_duration")
+                    send_mask_reminder(f"跳过无效时长文件: {next_file} (时长={duration}秒)", "skip_zero_duration")
                     
                     # 检查是否有递归计数器，防止无限循环
                     skip_count = request.args.get('_skip_count', 0, type=int)
                     if skip_count >= 10:
-                        app.logger.error(f"[ZERO_DURATION] 连续跳过了{skip_count}个零时长文件，停止跳过")
-                        send_mask_reminder("连续跳过过多零时长文件，请检查文件", "skip_limit_reached")
+                        app.logger.error(f"[ZERO_DURATION] 连续跳过了{skip_count}个无效时长文件，停止跳过")
+                        send_mask_reminder("连续跳过过多无效时长文件，请检查文件", "skip_limit_reached")
                         return jsonify({
                             "status": "error", 
-                            "message": f"连续跳过了{skip_count}个零时长文件，已停止"
+                            "message": f"连续跳过了{skip_count}个无效时长文件，已停止"
                         }), 500
                     
                     # 递归调用next_track，跳过当前文件

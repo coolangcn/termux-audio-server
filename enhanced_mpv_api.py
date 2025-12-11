@@ -1250,6 +1250,31 @@ def playback_monitor_worker():
                         with state_lock:
                             self_recorded_state["duration"] = float(duration)
                 
+                # 检测duration为0或空的情况，自动跳到下一首
+                # 初始化零时长检测计数器
+                if 'zero_duration_count' not in last_status:
+                    last_status['zero_duration_count'] = 0
+                
+                # 获取当前duration
+                current_duration_check = self_recorded_state["duration"]
+                
+                # 如果有播放文件且duration为0或空
+                if filename and (current_duration_check is None or current_duration_check == 0 or current_duration_check == ''):
+                    last_status['zero_duration_count'] += 1
+                    # 等待3秒（6次检查，每次0.5秒）后仍然是0，则自动跳过
+                    if last_status['zero_duration_count'] >= 6:
+                        app.logger.warning(f"[PLAYBACK_MONITOR] 检测到当前曲目duration为0或空: {filename}，自动跳到下一首")
+                        # 重置计数器，避免重复触发
+                        last_status['zero_duration_count'] = 0
+                        # 调用下一首
+                        next_track()
+                        # 跳过本次循环的其余检查
+                        time.sleep(check_interval)
+                        continue
+                else:
+                    # duration正常，重置计数器
+                    last_status['zero_duration_count'] = 0
+                
                 # 移除了进度百分比更新逻辑，因为现在由timer_worker函数负责更新播放位置和进度百分比
 
                 # 5. 播放列表 (每10秒)

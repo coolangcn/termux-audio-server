@@ -86,6 +86,10 @@ state_lock = threading.RLock()     # 用于播放状态的线程安全
 timer_thread_running = False  # 计时线程是否正在运行
 timer_thread = None  # 计时线程对象
 
+# 自动暂停配置
+AUTO_PAUSE_DURATION = 1800  # 自动暂停时长（秒），30分钟 = 1800秒
+continuous_play_start_time = None  # 连续播放开始时间
+
 # 配置操作日志
 LOG_DIR = "/data/data/com.termux/files/home/audio_logs"
 os.makedirs(LOG_DIR, exist_ok=True)
@@ -1150,7 +1154,7 @@ def timer_worker():
 
 def playback_monitor_worker():
     """播放结束监控工作线程 - 检测播放结束并自动播放下一首"""
-    global playback_monitor_running, current_playing_file, self_recorded_state
+    global playback_monitor_running, current_playing_file, self_recorded_state, continuous_play_start_time
     app.logger.info("[PLAYBACK_MONITOR] 播放结束监控线程已启动")
     
     # 检查间隔时间（秒）
@@ -1304,6 +1308,48 @@ def playback_monitor_worker():
                 current_duration = self_recorded_state["duration"]
             
             app.logger.debug(f"[PLAYBACK_MONITOR] 自己记录的状态 - 进度: {current_progress}%, 暂停: {is_paused}, 播放中: {is_playing}, 当前文件: {filename}, 时长: {current_duration}秒")
+            
+            # 自动暂停功能：检测连续播放时长
+            if is_playing and not is_paused and filename:
+                # 如果正在播放且未暂停
+                if continuous_play_start_time is None:
+                    # 记录播放开始时间
+                    continuous_play_start_time = time.time()
+                    app.logger.info(f"[AUTO_PAUSE] 开始记录连续播放时间")
+                else:
+                    # 计算已播放时长
+                    play_duration = time.time() - continuous_play_start_time
+                    
+                    # 检查是否超过30分钟
+                    if play_duration >= AUTO_PAUSE_DURATION:
+                        app.logger.warning(f"[AUTO_PAUSE] 连续播放已达{AUTO_PAUSE_DURATION/60:.1f}分钟，自动暂停")
+                        
+                        # 发送遮罩提醒
+                        send_mask_reminder(f"已连续播放{AUTO_PAUSE_DURATION/60:.0f}分钟，自动暂停", "auto_pause")
+                        
+                        # 记录到时间轴
+                        add_to_timeline(
+                            "auto_pause",
+                            f"自动暂停（连续播放{AUTO_PAUSE_DURATION/60:.0f}分钟）",
+                            {"play_duration": play_duration, "current_file": filename}
+                        )
+                        
+                        # 执行暂停
+                        send_mpv_command(["set", "pause", "yes"])
+                        
+                        # 更新状态
+                        with state_lock:
+                            self_recorded_state["paused"] = True
+                            self_recorded_state["playing"] = False
+                        
+                        # 重置计时器
+                        continuous_play_start_time = None
+                        app.logger.info(f"[AUTO_PAUSE] 已重置连续播放计时器")
+            else:
+                # 如果暂停或停止播放，重置计时器
+                if continuous_play_start_time is not None:
+                    app.logger.info(f"[AUTO_PAUSE] 播放已暂停/停止，重置连续播放计时器")
+                    continuous_play_start_time = None
             
             # 检测time-pos是否稳定（不再变化）
             time_pos_changed = abs(current_position - last_status['time_pos']) > 0.1  # 允许0.1秒的误差
@@ -3178,3 +3224,4 @@ if __name__ == '__main__':
     API_PORT = int(os.environ.get('API_PORT', 5000))
     print(f"🚀 启动API服务，绑定到 0.0.0.0:{API_PORT}")
     app.run(host='0.0.0.0', port=API_PORT, debug=False, threaded=True)
+ 
